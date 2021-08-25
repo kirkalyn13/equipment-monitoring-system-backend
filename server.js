@@ -3,7 +3,6 @@ const mysql = require('mysql')
 const cors = require('cors')
 const fs = require("fs")
 const fastcsv = require("fast-csv")
-const homedir = require('os').homedir()
 
 const app = express()
 
@@ -15,6 +14,8 @@ function getUserDownloads() {
     return process.env[(process.platform == 'win32') ? 'USERPROFILE' : '/Home'];
   }
 
+
+//Connect to SQL Database
 const db = mysql.createConnection({
     user: 'testuser',
     password: 'test123',
@@ -22,6 +23,47 @@ const db = mysql.createConnection({
     database: 'equipmentdb',
     dateStrings: 'date'
 
+})
+
+//Login
+app.post('/login',(req,res) => {
+    const username = req.body.username
+    const password = req.body.password
+    console.log(`Requesting Access: ${username}`)
+    db.query('SELECT * FROM userTable',(err,result) => {
+        if(err){
+            console.log(err)
+        }else{
+            const allUsers = result
+            const usernames = allUsers.map(user => user.username)
+            if(usernames.includes(username)){
+                const userRef = allUsers.filter(user => user.username === username)
+                if(password === userRef[0].password){
+                    console.log(`User Login: ${username}`)
+                    res.send({
+                        username: username,
+                        role: userRef[0].role,
+                        login: true,
+                    })
+                }
+                else{
+                    console.log("Access Denied: Invalid Credentials.")
+                    res.send({
+                        username: '',
+                        role: '',
+                        login: false,
+                    })
+                }
+            }else{
+                console.log("Access Denied: Invalid Credentials.")
+                res.send({
+                    username: '',
+                    role: '',
+                    login: false,
+                })
+            }
+        }
+    })
 })
 
 //Add New Equipment
@@ -51,7 +93,7 @@ app.post('/create', (req, res) => {
         if(err){
             console.log(err)
         }else{
-            res.send("New Equipment Added.")
+            res.send(`Added ${eqpName} (${eqpSerial})..`)
         }
     })
 })
@@ -62,7 +104,8 @@ app.delete('/delete/:id',(req,res) =>{
         if(err){
             console.log(err)
         }else{
-            res.send("equipment deleted.")
+            res.send("Equipment deleted.")
+            console.log(`Deleted Equipment ID: ${req.params.id}`)
         }
     })
 })
@@ -74,7 +117,7 @@ app.get('/allequipment', (req, res) =>{
             console.log(err)
         }else{
             res.send(result)
-            console.log(result)
+            console.log("Queried Equipment Data.")
         }
     })
 })
@@ -107,7 +150,7 @@ app.put('/edit/:id', (req, res) => {
             console.log(err)
         }else{
             res.send(result)
-            console.log(result)
+            console.log(`Edited Equipment ${eqpName} (${eqpSerial}).`)
         }
     })
 })
