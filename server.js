@@ -66,6 +66,18 @@ app.post('/login',(req,res) => {
     })
 })
 
+//Get All Equipment
+app.get('/allequipment', (req, res) =>{
+    db.query('SELECT * FROM equipment',(err,result) => {
+        if(err){
+            console.log(err)
+        }else{
+            res.send(result)
+            console.log("Queried Equipment Data.")
+        }
+    })
+})
+
 //Add New Equipment
 app.post('/create', (req, res) => {
     const eqpName = req.body.eqpName
@@ -110,17 +122,6 @@ app.delete('/delete/:id',(req,res) =>{
     })
 })
 
-//Get All Equipment
-app.get('/allequipment', (req, res) =>{
-    db.query('SELECT * FROM equipment',(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            res.send(result)
-            console.log("Queried Equipment Data.")
-        }
-    })
-})
 
 //Edit Equipment
 app.put('/edit/:id', (req, res) => {
@@ -151,6 +152,63 @@ app.put('/edit/:id', (req, res) => {
         }else{
             res.send(result)
             console.log(`Edited Equipment ${eqpName} (${eqpSerial}).`)
+        }
+    })
+})
+
+
+//Get All Users
+app.get('/allusers', (req, res) =>{
+    db.query('SELECT * FROM userTable',(err,result) => {
+        if(err){
+            console.log(err)
+        }else{
+            res.send(result)
+            console.log("Queried All User Data.")
+        }
+    })
+})
+
+//Add User
+app.post('/createuser', (req, res) => {
+    const username = req.body.username
+    const password = req.body.password
+    const role = req.body.role
+    const inputValues = [username, password, role]
+    db.query('INSERT INTO userTable (`username`, `password`, `role`) VALUES (?, ?, ?)', 
+    inputValues, (err, result) =>{
+        if(err){
+            console.log(err)
+        }else{
+            res.send(`Added User: ${username}, with ${role} privileges.`)
+        }
+    })
+})
+
+//Edit User
+app.put('/edituser/:id', (req, res) => {
+    const username = req.body.username
+    const password = req.body.password
+    const role = req.body.role
+    const updateQuery = `UPDATE userTable SET username='${username}',password='${password}',role='${role}' WHERE id = ${req.params.id}`
+    db.query(updateQuery,(err,result) => {
+        if(err){
+            console.log(err)
+        }else{
+            res.send(result)
+            console.log(`Updated ${username}, with ${role} privileges.`)
+        }
+    })
+})
+
+//Delete User
+app.delete('/deleteuser/:id',(req,res) =>{
+    db.query(`DELETE FROM userTable WHERE id = ${req.params.id}`, (err,result) => {
+        if(err){
+            console.log(err)
+        }else{
+            res.send("User deleted.")
+            console.log(`Deleted User ${req.params.id}`)
         }
     })
 })
