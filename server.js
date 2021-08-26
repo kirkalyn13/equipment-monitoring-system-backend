@@ -3,6 +3,7 @@ const mysql = require('mysql')
 const cors = require('cors')
 const fs = require("fs")
 const fastcsv = require("fast-csv")
+const bcrypt = require('bcrypt')
 
 const app = express()
 
@@ -26,11 +27,11 @@ const db = mysql.createConnection({
 })
 
 //Login
-app.post('/login',(req,res) => {
+app.post('/login', async (req,res) => {
     const username = req.body.username
     const password = req.body.password
     console.log(`Requesting Access: ${username}`)
-    db.query('SELECT * FROM userTable',(err,result) => {
+    db.query('SELECT * FROM userTable', async (err,result) => {
         if(err){
             console.log(err)
         }else{
@@ -38,21 +39,26 @@ app.post('/login',(req,res) => {
             const usernames = allUsers.map(user => user.username)
             if(usernames.includes(username)){
                 const userRef = allUsers.filter(user => user.username === username)
-                if(password === userRef[0].password){
-                    console.log(`User Login: ${username}`)
-                    res.send({
-                        username: username,
-                        role: userRef[0].role,
-                        login: true,
+                try{
+                    const login = await bcrypt.compare(password, userRef[0].password)
+                    if(login){
+                        console.log(`User Login: ${username}`)
+                        res.send({
+                            username: username,
+                            role: userRef[0].role,
+                            login: true,
+                        })
+                    }
+                    else{
+                        console.log("Access Denied: Invalid Credentials.")
+                        res.send({
+                            username: '',
+                            role: '',
+                            login: false,
                     })
                 }
-                else{
-                    console.log("Access Denied: Invalid Credentials.")
-                    res.send({
-                        username: '',
-                        role: '',
-                        login: false,
-                    })
+                }catch{
+                    res.status(400).send("User Not Found.")
                 }
             }else{
                 console.log("Access Denied: Invalid Credentials.")
@@ -170,28 +176,33 @@ app.get('/allusers', (req, res) =>{
 })
 
 //Add User
-app.post('/createuser', (req, res) => {
-    const username = req.body.username
-    const password = req.body.password
-    const role = req.body.role
-    const inputValues = [username, password, role]
-    db.query('INSERT INTO userTable (`username`, `password`, `role`) VALUES (?, ?, ?)', 
-    inputValues, (err, result) =>{
-        if(err){
-            console.log(err)
-        }else{
-            res.send(`Added User: ${username}, with ${role} privileges.`)
-        }
-    })
+app.post('/createuser', async (req, res) => {
+    try{
+        const username = req.body.username
+        const hashedPassword = await bcrypt.hash(req.body.password, 10)
+        const role = req.body.role
+        const inputValues = [username, hashedPassword, role]
+        db.query('INSERT INTO userTable (`username`, `password`, `role`) VALUES (?, ?, ?)', 
+        inputValues, (err, result) =>{
+            if(err){
+                console.log(err)
+            }else{
+                res.send(`Added User: ${username}, with ${role} privileges.`)
+            }
+        })
+    }catch{
+        res.status(500).send()
+    }
 })
 
 //Edit User
-app.put('/edituser/:id', (req, res) => {
-    const username = req.body.username
-    const password = req.body.password
-    const role = req.body.role
-    const updateQuery = `UPDATE userTable SET username='${username}',password='${password}',role='${role}' WHERE id = ${req.params.id}`
-    db.query(updateQuery,(err,result) => {
+app.put('/edituser/:id', async (req, res) => {
+    try{
+        const username = req.body.username
+        const hashedPassword = await bcrypt.hash(req.body.password, 10)
+        const role = req.body.role
+        const updateQuery = `UPDATE userTable SET username='${username}',password='${hashedPassword}',role='${role}' WHERE id = ${req.params.id}`
+        db.query(updateQuery,(err,result) => {
         if(err){
             console.log(err)
         }else{
@@ -199,6 +210,9 @@ app.put('/edituser/:id', (req, res) => {
             console.log(`Updated ${username}, with ${role} privileges.`)
         }
     })
+    }catch{
+        res.status(500).send()
+    }
 })
 
 //Delete User
