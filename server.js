@@ -156,7 +156,7 @@ app.post('/create/changelog', (req, res) => {
 
 //Delete Equipment
 app.delete('/delete/:id',(req,res) =>{
-    db.query(`DELETE FROM equipment WHERE indexNum = ${req.params.id}`, (err,result) => {
+    db.query(`DELETE FROM equipment WHERE id = ${req.params.id}`, (err,result) => {
         if(err){
             console.log(err)
         }else{
