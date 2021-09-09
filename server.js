@@ -84,6 +84,18 @@ app.get('/allequipment', (req, res) =>{
     })
 })
 
+//Get Single Equipment
+app.get('/equipment/:id', (req, res) =>{
+    db.query(`SELECT * FROM equipment WHERE id = ${req.params.id}`,(err,result) => {
+        if(err){
+            console.log(err)
+        }else{
+            res.send(result)
+            console.log(`Equipment ${req.params.id} Info.`)
+        }
+    })
+})
+
 //Add New Equipment
 app.post('/create', (req, res) => {
     const eqpName = req.body.eqpName
