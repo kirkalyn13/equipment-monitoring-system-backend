@@ -328,7 +328,7 @@ app.delete('/deleteuser/:id',(req,res) =>{
 
 //Extract Equipment File
 app.get('/extract',(req,res) => {
-    db.query("SELECT * FROM equipment", (err, data, fields) => {
+    db.query("SELECT `name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status` FROM `equipment`", (err, data, fields) => {
         if(err){
             console.log(err)
             alert("Unable to download file.")
