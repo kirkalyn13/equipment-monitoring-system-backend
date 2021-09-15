@@ -4,6 +4,7 @@ const cors = require('cors')
 const fs = require("fs")
 const fastcsv = require("fast-csv")
 const bcrypt = require('bcrypt')
+const stream = require('stream')
 
 const app = express()
 
@@ -211,6 +212,38 @@ app.put('/edit/:id', (req, res) => {
         }else{
             res.send(result)
             console.log(`Edited Equipment ${eqpName} (${eqpSerial}).`)
+        }
+    })
+})
+
+//Download Certificate
+app.get('/certificate/:id', (req, res) =>{
+    db.query(`SELECT certificate FROM equipment WHERE id = ${req.params.id}`,(err,result) => {
+        if(err){
+            console.log(err)
+        }else{
+            const file = result
+            const filename = `certificate_${req.params.id}.pdf`
+            res.set('Content-disposition', 'attachment; filename=' + filename);
+            res.set('Content-Type', 'application/octet-stream')
+            res.send(file)
+            console.log(`Downloaded Equipment ${req.params.id} Calibration Certificate.`)
+        }
+    })
+})
+
+//Download Certificate via changeLogs
+app.get('/changelog/certificate/:id/:timestamp', (req, res) =>{
+    db.query(`SELECT certificate FROM changeLogs WHERE id = ${req.params.id} AND timestamp = '${req.params.timestamp}'`,(err,result) => {
+        if(err){
+            console.log(err)
+        }else{
+            const file = result
+            const filename = `certificate_${req.params.id}.pdf`
+            res.set('Content-disposition', 'attachment; filename=' + filename);
+            res.set('Content-Type', 'application/octet-stream')
+            res.send(file)
+            console.log(`Downloaded Equipment ${req.params.id} (${req.params.timestamp}) Calibration Certificate.`)
         }
     })
 })
