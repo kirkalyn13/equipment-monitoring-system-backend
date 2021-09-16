@@ -4,12 +4,12 @@ const cors = require('cors')
 const fs = require("fs")
 const fastcsv = require("fast-csv")
 const bcrypt = require('bcrypt')
-const stream = require('stream')
 
 const app = express()
+const port = process.env.PORT || 3005
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({limit: '50mb'}))
 
 //Determine User's Home Directory
 function getUserDownloads() {
@@ -130,6 +130,7 @@ app.post('/create', (req, res) => {
         }
     })
 })
+
 
 //Log New Equipment
 app.post('/create/changelog', (req, res) => {
@@ -388,6 +389,6 @@ app.get('/extract',(req,res) => {
   })
 })
 
-app.listen(3005, () => {
-    console.log("Equipment Management System Server is running...")
+app.listen(port, () => {
+    console.log(`Equipment Management System Server is running on port ${port}...`)
 })
