@@ -127,47 +127,16 @@ app.post('/create', (req, res) => {
         if(err){
             console.log(err)
         }else{
-            res.send(`Added ${eqpName} (${eqpSerial})..`)
+            db.query(`SELECT id FROM equipment ORDER BY id DESC LIMIT 1`,(err,result) => {
+                if(err){
+                    console.log(err)
+                }else{
+                    res.send(result)
+                }
+            })
         }
     })
 })
-
-
-//Log New Equipment
-app.post('/create/changelog', (req, res) => {
-    const eqpName = req.body.eqpName
-    const eqpType = req.body.eqpType
-    const eqpModel = req.body.eqpModel
-    const eqpSerial = req.body.eqpSerial
-    const eqpDesc = req.body.eqpDesc
-    const eqpBrand = req.body.eqpBrand
-    const eqpPrice = req.body.eqpPrice
-    const eqpManufacturer = req.body.eqpManufacturer
-    const eqpExp = req.body.eqpExp
-    const eqpPurchaseDate = req.body.eqpPurchaseDate
-    const eqpCalibDate = req.body.eqpCalibDate
-    const eqpNextCalib = req.body.eqpNextCalib
-    const eqpCalibMethod = req.body.eqpCalibMethod
-    const eqpLoc = req.body.eqpLoc
-    const eqpIssuedBy = req.body.eqpIssuedBy
-    const eqpIssuedTo = req.body.eqpIssuedTo
-    const eqpRemarks = req.body.eqpRemarks
-    const eqpStatus = req.body.eqpStatus
-    const eqpCertificate = req.body.eqpCertificate
-    const inputValues = [eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer, 
-        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate]
-
-    db.query('INSERT INTO changeLogs (`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,? ,?)', 
-    inputValues, (err, result) =>{
-        if(err){
-            console.log(err)
-        }else{
-            res.send(`Added ${eqpName} (${eqpSerial}) data to changeLogs.`)
-        }
-    })
-})
-
-
 
 //Delete Equipment
 app.delete('/delete/:id',(req,res) =>{
