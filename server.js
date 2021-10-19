@@ -331,6 +331,7 @@ app.delete('/deleteuser/:id',(req,res) =>{
     })
 })
 
+
 //Extract Equipment File
 app.get('/extract',(req,res) => {
     db.query("SELECT `name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status` FROM `equipment`", (err, data, fields) => {
@@ -338,25 +339,23 @@ app.get('/extract',(req,res) => {
             console.log(err)
             alert("Unable to download file.")
         }else{
-            res.send("Extracting Equipment Data.")
-            var dtnow = new Date()
-            var y = dtnow.getFullYear()
-            var m = dtnow.getMonth() + 1
-            var n = dtnow.getDate()
-            var h = dtnow.getHours()
-
-            const path = getUserDownloads()
-            const ws = fs.createWriteStream(`${path}/PhysicsLabEquipment_${y}${m}${n}${h}.csv`)
+            const filename = `EquipmentList.csv`
+            const ws = fs.createWriteStream(filename)
             const jsonData = JSON.parse(JSON.stringify(data))
             console.log("jsonData", jsonData)
 
-            fastcsv
-                .write(jsonData, { headers: true })
-                .on("finish", function() {
-                    console.log(`Extracted PhysicsLabEquipment_${y}${m}${n}${h}.csv to ${path}`);
-                })
-                .pipe(ws)
+            fastcsv.write(jsonData, { headers: true }).on("finish", function() {
+                    console.log(`Extracted ${filename}`)
+                }).pipe(ws)
             }
+            setTimeout(() => {
+                const csvFile = 'EquipmentList.csv'
+                const csvBase64 = fs.readFileSync(csvFile, {encoding: 'base64'})
+                res.set('Content-disposition', 'attachment; filename=' + csvFile)
+                res.set('Content-Type', 'text/csv')
+                res.send('data:text/csv;base64,' + csvBase64)
+            }, 1000)
+            
   })
 })
 
