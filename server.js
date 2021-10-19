@@ -11,12 +11,6 @@ const port = process.env.PORT || 3005
 app.use(cors())
 app.use(express.json({limit: '50mb'}))
 
-//Determine User's Home Directory
-function getUserDownloads() {
-    return process.env[(process.platform == 'win32') ? 'USERPROFILE' : '/Home'];
-  }
-
-
 //Connect to SQL Database
 const db = mysql.createConnection({
     user: 'testuser',
