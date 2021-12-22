@@ -325,10 +325,13 @@ app.delete('/deleteuser/:id',(req,res) =>{
     })
 })
 
-
 //Extract Equipment File
-app.get('/extract',(req,res) => {
-    db.query("SELECT `name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status` FROM `equipment`", (err, data, fields) => {
+app.post('/extract',(req,res) => {
+    const shownColumns = req.body.shown
+    const shownString = Object.keys(Object.fromEntries(Object.entries(shownColumns).filter(entry => entry[1] === true))).toString()
+    const columnQuery = shownString.replace(/show/g,"").split(",").map(col => col.charAt(0).toLowerCase()  + col.slice(1)).toString().replace(",certificate","").replace("certificate","")
+
+    db.query(`SELECT ${columnQuery} FROM equipment`, (err, data, fields) => {
         if(err){
             console.log(err)
             alert("Unable to download file.")
@@ -336,7 +339,7 @@ app.get('/extract',(req,res) => {
             const filename = `EquipmentList.csv`
             const ws = fs.createWriteStream(filename)
             const jsonData = JSON.parse(JSON.stringify(data))
-            console.log("jsonData", jsonData)
+            //console.log("jsonData", jsonData)
 
             fastcsv.write(jsonData, { headers: true }).on("finish", function() {
                     console.log(`Extracted ${filename}`)
