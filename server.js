@@ -331,7 +331,14 @@ app.post('/extract',(req,res) => {
     const shownString = Object.keys(Object.fromEntries(Object.entries(shownColumns).filter(entry => entry[1] === true))).toString()
     const columnQuery = shownString.replace(/show/g,"").split(",").map(col => col.charAt(0).toLowerCase()  + col.slice(1)).toString().replace(",certificate","").replace("certificate","")
 
-    db.query(`SELECT ${columnQuery} FROM equipment`, (err, data, fields) => {
+    let filterQuery = ""
+    const columnFilter = req.body.dataFilter.column
+    const dataFilter = req.body.dataFilter.data
+    if(dataFilter !== "All"){
+        filterQuery = ` WHERE ${columnFilter}='${dataFilter}'`
+    }
+
+    db.query(`SELECT ${columnQuery} FROM equipment${filterQuery}`, (err, data, fields) => {
         if(err){
             console.log(err)
             alert("Unable to download file.")
