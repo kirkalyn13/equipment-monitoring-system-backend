@@ -378,15 +378,36 @@ cron.schedule("0 0 * * *" , ()=>{
             const pendingIDs = pending.map(val => val.id)
             for(let i=0; i <= pendingIDs.length - 1; i ++){
                 const updateQuery = `UPDATE equipment SET status='For Calibration' WHERE id = ${pendingIDs[i]}`
+                const infoQuery = `SELECT * FROM equipment WHERE id = ${pendingIDs[i]}`
                 db.query(updateQuery,(err,result) => {
                 if(err){
                     console.log("No pending equipment...")
                 }else{
                     console.log(`Updated Equipment ${pendingIDs[i]} to For Calibration Status.`)
                 }
+                })
+                db.query(infoQuery, (err,result) => {
+                    if(err){
+                        console.log(err)
+                    }else{
+                        const inputValues = [result[0].id, result[0].name, result[0].type, result[0].model, result[0].serial, 
+                            result[0].description, result[0].brand, result[0].price, result[0].manufacturer, 
+                            result[0].expiration, result[0].purchaseDate, result[0].calibrationDate, result[0].calibrationMethod, result[0].nextCalibration, 
+                            result[0].location, result[0].issuedBy, result[0].issuedTo, 
+                            result[0].remarks, result[0].status, result[0].certificate]
+                        db.query('INSERT INTO changeLogs (`id`,`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,? ,?)', 
+                            inputValues, (err, result) =>{
+                        if(err){
+                            console.log(err)
+                        }else{
+                            console.log(`Logged Equipment ${pendingIDs[i]} changes.`)
+                        }
+                    }
+                )
+                    }
             })
         }
-        }
+    }
     })
 })
 
