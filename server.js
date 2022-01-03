@@ -1,9 +1,11 @@
 const express = require('express')
 const mysql = require('mysql')
 const cors = require('cors')
-const fs = require("fs")
-const fastcsv = require("fast-csv")
+const fs = require('fs')
+const fastcsv = require('fast-csv')
 const bcrypt = require('bcrypt')
+const cron = require('node-cron')
+const moment = require('moment')
 
 const app = express()
 const port = process.env.PORT || 3005
@@ -361,6 +363,31 @@ app.post('/extract',(req,res) => {
             }, 1000)
             
   })
+})
+
+// Automated Pending Equipment For Calibration Update
+cron.schedule("0 0 * * *" , ()=>{
+    console.log("Checking Equipment for due Calibrations...")
+    db.query('SELECT `id`, `nextCalibration`, `status` FROM equipment',(err,result) => {
+        if(err){
+            console.log(err)
+        }else{
+            const allEquipment = result
+            const workingEquipment = allEquipment.filter(val => val.status === "Working")
+            const pending = workingEquipment.filter(val => -(moment().diff(val.nextCalibration, "days")) <= 30)
+            const pendingIDs = pending.map(val => val.id)
+            for(let i=0; i <= pendingIDs.length - 1; i ++){
+                const updateQuery = `UPDATE equipment SET status='For Calibration' WHERE id = ${pendingIDs[i]}`
+                db.query(updateQuery,(err,result) => {
+                if(err){
+                    console.log("No pending equipment...")
+                }else{
+                    console.log(`Updated Equipment ${pendingIDs[i]} to For Calibration Status.`)
+                }
+            })
+        }
+        }
+    })
 })
 
 app.listen(port, () => {
