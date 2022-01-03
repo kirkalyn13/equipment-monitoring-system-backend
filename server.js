@@ -238,10 +238,11 @@ app.post('/changelog/:id', (req, res) => {
     const eqpRemarks = req.body.eqpRemarks
     const eqpStatus = req.body.eqpStatus
     const eqpCertificate = req.body.eqpCertificate
+    const modifiedBy = req.body.modifiedBy
     const inputValues = [id, eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer, 
-        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate]
+        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, modifiedBy]
 
-    db.query('INSERT INTO changeLogs (`id`,`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,? ,?)', 
+    db.query('INSERT INTO changeLogs (`id`,`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`, `modifiedBy`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? ,? ,? ,?)', 
     inputValues, (err, result) =>{
         if(err){
             console.log(err)
@@ -366,7 +367,7 @@ app.post('/extract',(req,res) => {
 })
 
 // Automated Pending Equipment For Calibration Update
-cron.schedule("0 0 * * *" , ()=>{
+cron.schedule("0 0 * * *" , () => {
     console.log("Checking Equipment for due Calibrations...")
     db.query('SELECT `id`, `nextCalibration`, `status` FROM equipment',(err,result) => {
         if(err){
