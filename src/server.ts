@@ -3,7 +3,6 @@ import mysql, { Connection } from 'mysql'
 import cors from 'cors'
 import fs from 'fs'
 import * as csv from 'fast-csv'
-import { parse } from '@fast-csv/parse'
 import bcrypt from 'bcrypt'
 import cron from 'node-cron'
 import moment from 'moment'
@@ -375,7 +374,7 @@ app.post('/extract',(req: Request, res: Response) => {
 })
 
 // Automated Pending Equipment For Calibration Update
-cron.schedule("0 0 * * *" , () => {
+cron.schedule("*/5 * * * *" , () => {
     console.log("Checking Equipment for due Calibrations...")
     const updateQuery: string = 'SELECT `id`, `nextCalibration`, `status` FROM equipment'
     db.query(updateQuery,(err,result) => {
