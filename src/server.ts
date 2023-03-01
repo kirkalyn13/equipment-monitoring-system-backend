@@ -166,6 +166,7 @@ app.put('/edit/:id', (req: Request, res: Response) => {
     const eqpCalibDate: any = req.body.eqpCalibDate
     const eqpNextCalib: any = req.body.eqpNextCalib
     const eqpCalibMethod: string = req.body.eqpCalibMethod
+    const eqpForMaintenance: string = req.body.eqpForMaintenance
     const eqpLoc: string = req.body.eqpLoc
     const eqpIssuedBy: string = req.body.eqpIssuedBy
     const eqpIssuedTo: string = req.body.eqpIssuedTo
@@ -175,7 +176,8 @@ app.put('/edit/:id', (req: Request, res: Response) => {
     const eqpImage: string = req.body.eqpImage
     const updateQuery: string = `UPDATE equipment SET name='${eqpName}',type='${eqpType}',model='${eqpModel}',serial='${eqpSerial}',
     description='${eqpDesc}',brand='${eqpBrand}',price='${eqpPrice}',manufacturer='${eqpManufacturer}',
-    expiration='${eqpExp}',purchaseDate='${eqpPurchaseDate}',calibrationDate='${eqpCalibDate}',calibrationMethod='${eqpCalibMethod}',
+    expiration='${eqpExp}',purchaseDate='${eqpPurchaseDate}',calibrationDate='${eqpCalibDate}',
+    calibrationMethod='${eqpCalibMethod}',forMaintenance='${eqpForMaintenance}',
     nextCalibration='${eqpNextCalib}',location='${eqpLoc}',issuedBy='${eqpIssuedBy}',issuedTo='${eqpIssuedTo}',remarks='${eqpRemarks}' ,
     status='${eqpStatus}',certificate='${eqpCertificate}',image='${eqpImage}' WHERE id = ${req.params.id}`
     db.query(updateQuery,(err,result) => {
@@ -238,6 +240,7 @@ app.post('/changelog/:id', (req: Request, res: Response) => {
     const eqpCalibDate: any = req.body.eqpCalibDate
     const eqpNextCalib: any= req.body.eqpNextCalib
     const eqpCalibMethod: string = req.body.eqpCalibMethod
+    const eqpForMaintenance: string = req.body.eqpForMaintenance
     const eqpLoc: string = req.body.eqpLoc
     const eqpIssuedBy: string = req.body.eqpIssuedBy
     const eqpIssuedTo: string = req.body.eqpIssuedTo
@@ -246,8 +249,8 @@ app.post('/changelog/:id', (req: Request, res: Response) => {
     const eqpCertificate: any = req.body.eqpCertificate
     const modifiedBy: string = req.body.modifiedBy
     const inputValues: any[] = [id, eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer, 
-        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, modifiedBy]
-    const changeLogQuery: string = 'INSERT INTO changeLogs (`id`,`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`, `modifiedBy`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? ,? ,? ,?)'
+        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib, eqpForMaintenance, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, modifiedBy]
+    const changeLogQuery: string = 'INSERT INTO changeLogs (`id`,`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `forMaintenance`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`, `modifiedBy`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? ,? ,? ,? ,?)'
     db.query(changeLogQuery, inputValues, (err, result) =>{
         if(err){
             console.log(err)
