@@ -1,5 +1,6 @@
 import express, {Application, Request, Response} from 'express'
 import { Pool } from 'pg'
+import dotenv from 'dotenv'
 import cors from 'cors'
 import fs from 'fs'
 import * as csv from 'fast-csv'
@@ -9,20 +10,22 @@ import moment from 'moment'
 
 const app: Application = express()
 const port: string | number = process.env.PORT || 3005
+dotenv.config()
 
 app.use(cors())
-app.use(express.json({limit: '50mb'}))
+app.use(express.json({limit: '64mb'}))
+app.use(express.urlencoded({limit: '64mb', extended: true}))
 
 //Connect to PostgreSQL Database
 const db = new Pool({
-    user: 'testuser',
-    password: 'test123',
-    host: 'localhost',
-    database: 'equipmentdb',
-    port: 5432,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    port: Number(process.env.DB_PORT),
 })
 
-//Login
+// !Deprecated: Login
 app.post('/login', async (req: Request, res: Response) => {
     const username: string = req.body.username
     const password: string = req.body.password

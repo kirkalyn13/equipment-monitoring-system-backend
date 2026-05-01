@@ -27,7 +27,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const mysql_1 = __importDefault(require("mysql"));
+const pg_1 = require("pg");
+const dotenv_1 = __importDefault(require("dotenv"));
 const cors_1 = __importDefault(require("cors"));
 const fs_1 = __importDefault(require("fs"));
 const csv = __importStar(require("fast-csv"));
@@ -36,277 +37,191 @@ const node_cron_1 = __importDefault(require("node-cron"));
 const moment_1 = __importDefault(require("moment"));
 const app = (0, express_1.default)();
 const port = process.env.PORT || 3005;
+dotenv_1.default.config();
 app.use((0, cors_1.default)());
-app.use(express_1.default.json({ limit: '50mb' }));
-//Connect to SQL Database
-const db = mysql_1.default.createConnection({
-    user: 'testuser',
-    password: 'test123',
-    host: 'localhost',
-    database: 'equipmentdb',
-    dateStrings: true
+app.use(express_1.default.json({ limit: '64mb' }));
+app.use(express_1.default.urlencoded({ limit: '64mb', extended: true }));
+//Connect to PostgreSQL Database
+const db = new pg_1.Pool({
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    port: Number(process.env.DB_PORT),
 });
-//Login
+// !Deprecated: Login
 app.post('/login', async (req, res) => {
     const username = req.body.username;
     const password = req.body.password;
-    const usersQuery = 'SELECT * FROM userTable';
     console.log(`Requesting Access: ${username}`);
-    db.query(usersQuery, async (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            const allUsers = result;
-            const usernames = allUsers.map(user => user.username);
-            if (usernames.includes(username)) {
-                const userRef = allUsers.filter(user => user.username === username);
-                try {
-                    const login = await bcrypt_1.default.compare(password, userRef[0].password);
-                    if (login) {
-                        console.log(`User Login: ${username}`);
-                        res.send({
-                            username: username,
-                            role: userRef[0].role,
-                            login: true,
-                        });
-                    }
-                    else {
-                        console.log("Access Denied: Invalid Credentials.");
-                        res.send({
-                            username: '',
-                            role: '',
-                            login: false,
-                        });
-                    }
-                }
-                catch {
-                    res.status(400).send("User Not Found.");
-                }
+    try {
+        const result = await db.query('SELECT * FROM userTable');
+        const allUsers = result.rows;
+        const userRef = allUsers.filter(user => user.username === username);
+        if (userRef.length > 0) {
+            const login = await bcrypt_1.default.compare(password, userRef[0].password);
+            if (login) {
+                console.log(`User Login: ${username}`);
+                res.send({
+                    username: username,
+                    role: userRef[0].role,
+                    login: true,
+                });
             }
             else {
                 console.log("Access Denied: Invalid Credentials.");
-                res.send({
-                    username: '',
-                    role: '',
-                    login: false,
-                });
+                res.send({ username: '', role: '', login: false });
             }
         }
-    });
+        else {
+            console.log("Access Denied: Invalid Credentials.");
+            res.send({ username: '', role: '', login: false });
+        }
+    }
+    catch (err) {
+        console.log(err);
+        res.status(400).send("User Not Found.");
+    }
 });
 //Get All Equipment
-app.get('/allequipment', (req, res) => {
-    const equipmentQuery = 'SELECT * FROM equipment';
-    db.query(equipmentQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            res.send(result);
-            console.log("Queried Equipment Data.");
-        }
-    });
+app.get('/allequipment', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM equipment');
+        res.send(result.rows);
+        console.log("Queried Equipment Data.");
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Get Single Equipment
-app.get('/equipment/:id', (req, res) => {
-    const equipmentQuery = `SELECT * FROM equipment WHERE id = ${req.params.id}`;
-    db.query(equipmentQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            res.send(result);
-            console.log(`Equipment ${req.params.id} Info.`);
-        }
-    });
+app.get('/equipment/:id', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM equipment WHERE id = $1', [req.params.id]);
+        res.send(result.rows);
+        console.log(`Equipment ${req.params.id} Info.`);
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Add New Equipment
-app.post('/create', (req, res) => {
-    const eqpName = req.body.eqpName;
-    const eqpType = req.body.eqpType;
-    const eqpModel = req.body.eqpModel;
-    const eqpSerial = req.body.eqpSerial;
-    const eqpDesc = req.body.eqpDesc;
-    const eqpBrand = req.body.eqpBrand;
-    const eqpPrice = req.body.eqpPrice;
-    const eqpManufacturer = req.body.eqpManufacturer;
-    const eqpExp = req.body.eqpExp;
-    const eqpPurchaseDate = req.body.eqpPurchaseDate;
-    const eqpCalibDate = req.body.eqpCalibDate;
-    const eqpNextCalib = req.body.eqpNextCalib;
-    const eqpCalibMethod = req.body.eqpCalibMethod;
-    const eqpLoc = req.body.eqpLoc;
-    const eqpIssuedBy = req.body.eqpIssuedBy;
-    const eqpIssuedTo = req.body.eqpIssuedTo;
-    const eqpRemarks = req.body.eqpRemarks;
-    const eqpStatus = req.body.eqpStatus;
-    const eqpCertificate = req.body.eqpCertificate;
-    const eqpImage = req.body.eqpImage;
+app.post('/create', async (req, res) => {
+    const { eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer, eqpExp, eqpPurchaseDate, eqpCalibDate, eqpNextCalib, eqpCalibMethod, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, eqpImage } = req.body;
     const inputValues = [eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer,
-        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, eqpImage];
-    const addQuery = 'INSERT INTO equipment (`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`, `image`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,? ,? ,?)';
-    db.query(addQuery, inputValues, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            const responseQuery = `SELECT id FROM equipment ORDER BY id DESC LIMIT 1`;
-            db.query(responseQuery, (err, result) => {
-                if (err) {
-                    console.log(err);
-                }
-                else {
-                    res.send(result);
-                }
-            });
-        }
-    });
+        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib,
+        eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, eqpImage];
+    const addQuery = `INSERT INTO equipment (name, type, model, serial, description, brand, price, manufacturer,
+        expiration, purchaseDate, calibrationDate, calibrationMethod, nextCalibration, location,
+        issuedBy, issuedTo, remarks, status, certificate, image)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id`;
+    try {
+        const result = await db.query(addQuery, inputValues);
+        res.send(result.rows);
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Delete Equipment
-app.delete('/delete/:id', (req, res) => {
-    const deleteQuery = `DELETE FROM equipment WHERE id = ${req.params.id}`;
-    db.query(deleteQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            res.send("Equipment deleted.");
-            console.log(`Deleted Equipment ID: ${req.params.id}`);
-        }
-    });
+app.delete('/delete/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM equipment WHERE id = $1', [req.params.id]);
+        res.send("Equipment deleted.");
+        console.log(`Deleted Equipment ID: ${req.params.id}`);
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Edit Equipment
-app.put('/edit/:id', (req, res) => {
-    const eqpName = req.body.eqpName;
-    const eqpType = req.body.eqpType;
-    const eqpModel = req.body.eqpModel;
-    const eqpSerial = req.body.eqpSerial;
-    const eqpDesc = req.body.eqpDesc;
-    const eqpBrand = req.body.eqpBrand;
-    const eqpPrice = req.body.eqpPrice;
-    const eqpManufacturer = req.body.eqpManufacturer;
-    const eqpExp = req.body.eqpExp;
-    const eqpPurchaseDate = req.body.eqpPurchaseDate;
-    const eqpCalibDate = req.body.eqpCalibDate;
-    const eqpNextCalib = req.body.eqpNextCalib;
-    const eqpCalibMethod = req.body.eqpCalibMethod;
-    const eqpLoc = req.body.eqpLoc;
-    const eqpIssuedBy = req.body.eqpIssuedBy;
-    const eqpIssuedTo = req.body.eqpIssuedTo;
-    const eqpRemarks = req.body.eqpRemarks;
-    const eqpStatus = req.body.eqpStatus;
-    const eqpCertificate = req.body.eqpCertificate;
-    const eqpImage = req.body.eqpImage;
-    const updateQuery = `UPDATE equipment SET name='${eqpName}',type='${eqpType}',model='${eqpModel}',serial='${eqpSerial}',
-    description='${eqpDesc}',brand='${eqpBrand}',price='${eqpPrice}',manufacturer='${eqpManufacturer}',
-    expiration='${eqpExp}',purchaseDate='${eqpPurchaseDate}',calibrationDate='${eqpCalibDate}',calibrationMethod='${eqpCalibMethod}',
-    nextCalibration='${eqpNextCalib}',location='${eqpLoc}',issuedBy='${eqpIssuedBy}',issuedTo='${eqpIssuedTo}',remarks='${eqpRemarks}' ,
-    status='${eqpStatus}',certificate='${eqpCertificate}',image='${eqpImage}' WHERE id = ${req.params.id}`;
-    db.query(updateQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            res.send(result);
-            console.log(`Edited Equipment ${eqpName} (${eqpSerial}).`);
-        }
-    });
+app.put('/edit/:id', async (req, res) => {
+    const { eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer, eqpExp, eqpPurchaseDate, eqpCalibDate, eqpNextCalib, eqpCalibMethod, eqpForMaintenance, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, eqpImage } = req.body;
+    const updateQuery = `UPDATE equipment SET name=$1, type=$2, model=$3, serial=$4, description=$5,
+        brand=$6, price=$7, manufacturer=$8, expiration=$9, purchaseDate=$10,
+        calibrationDate=$11, calibrationMethod=$12, forMaintenance=$13, nextCalibration=$14,
+        location=$15, issuedBy=$16, issuedTo=$17, remarks=$18, status=$19,
+        certificate=$20, image=$21 WHERE id = $22`;
+    const inputValues = [eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice,
+        eqpManufacturer, eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpForMaintenance,
+        eqpNextCalib, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus,
+        eqpCertificate, eqpImage, req.params.id];
+    try {
+        const result = await db.query(updateQuery, inputValues);
+        res.send(result.rows);
+        console.log(`Edited Equipment ${eqpName} (${eqpSerial}).`);
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Download Certificate
-app.get('/certificate/:id', (req, res) => {
-    const downloadQuery = `SELECT certificate FROM equipment WHERE id = ${req.params.id}`;
-    db.query(downloadQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            const file = result;
-            const filename = `certificate_${req.params.id}.pdf`;
-            res.set('Content-disposition', 'attachment; filename=' + filename);
-            res.set('Content-Type', 'application/octet-stream');
-            res.send(file);
-            console.log(`Downloaded Equipment ${req.params.id} Calibration Certificate.`);
-        }
-    });
+app.get('/certificate/:id', async (req, res) => {
+    try {
+        const result = await db.query('SELECT certificate FROM equipment WHERE id = $1', [req.params.id]);
+        const filename = `certificate_${req.params.id}.pdf`;
+        res.set('Content-disposition', 'attachment; filename=' + filename);
+        res.set('Content-Type', 'application/octet-stream');
+        res.send(result.rows);
+        console.log(`Downloaded Equipment ${req.params.id} Calibration Certificate.`);
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Download Certificate via changeLogs
-app.get('/changelog/certificate/:id/:timestamp', (req, res) => {
-    const downloadQuery = `SELECT certificate FROM changeLogs WHERE id = ${req.params.id} AND timestamp = '${req.params.timestamp}'`;
-    db.query(downloadQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            const file = result;
-            const filename = `certificate_${req.params.id}.pdf`;
-            res.set('Content-disposition', 'attachment; filename=' + filename);
-            res.set('Content-Type', 'application/octet-stream');
-            res.send(file);
-            console.log(`Downloaded Equipment ${req.params.id} (${req.params.timestamp}) Calibration Certificate.`);
-        }
-    });
+app.get('/changelog/certificate/:id/:timestamp', async (req, res) => {
+    try {
+        const result = await db.query("SELECT certificate FROM changeLogs WHERE id = $1 AND timestamp = $2", [req.params.id, req.params.timestamp]);
+        const filename = `certificate_${req.params.id}.pdf`;
+        res.set('Content-disposition', 'attachment; filename=' + filename);
+        res.set('Content-Type', 'application/octet-stream');
+        res.send(result.rows);
+        console.log(`Downloaded Equipment ${req.params.id} (${req.params.timestamp}) Calibration Certificate.`);
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Log Equipment Changes
-app.post('/changelog/:id', (req, res) => {
-    const id = req.params.id;
-    const eqpName = req.body.eqpName;
-    const eqpType = req.body.eqpType;
-    const eqpModel = req.body.eqpModel;
-    const eqpSerial = req.body.eqpSerial;
-    const eqpDesc = req.body.eqpDesc;
-    const eqpBrand = req.body.eqpBrand;
-    const eqpPrice = req.body.eqpPrice;
-    const eqpManufacturer = req.body.eqpManufacturer;
-    const eqpExp = req.body.eqpExp;
-    const eqpPurchaseDate = req.body.eqpPurchaseDate;
-    const eqpCalibDate = req.body.eqpCalibDate;
-    const eqpNextCalib = req.body.eqpNextCalib;
-    const eqpCalibMethod = req.body.eqpCalibMethod;
-    const eqpLoc = req.body.eqpLoc;
-    const eqpIssuedBy = req.body.eqpIssuedBy;
-    const eqpIssuedTo = req.body.eqpIssuedTo;
-    const eqpRemarks = req.body.eqpRemarks;
-    const eqpStatus = req.body.eqpStatus;
-    const eqpCertificate = req.body.eqpCertificate;
-    const modifiedBy = req.body.modifiedBy;
-    const inputValues = [id, eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer,
-        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, modifiedBy];
-    const changeLogQuery = 'INSERT INTO changeLogs (`id`,`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`, `modifiedBy`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? ,? ,? ,?)';
-    db.query(changeLogQuery, inputValues, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            res.send(`Logged ${eqpName} (${eqpSerial}) changes.`);
-        }
-    });
+app.post('/changelog/:id', async (req, res) => {
+    const { eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer, eqpExp, eqpPurchaseDate, eqpCalibDate, eqpNextCalib, eqpCalibMethod, eqpForMaintenance, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, modifiedBy } = req.body;
+    const inputValues = [req.params.id, eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand,
+        eqpPrice, eqpManufacturer, eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib,
+        eqpForMaintenance, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, modifiedBy];
+    const changeLogQuery = `INSERT INTO changeLogs (id, name, type, model, serial, description, brand, price,
+        manufacturer, expiration, purchaseDate, calibrationDate, calibrationMethod, nextCalibration,
+        forMaintenance, location, issuedBy, issuedTo, remarks, status, certificate, modifiedBy)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`;
+    try {
+        await db.query(changeLogQuery, inputValues);
+        res.send(`Logged ${eqpName} (${eqpSerial}) changes.`);
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Fetch Logs
-app.get('/logs/:id', (req, res) => {
-    const fetchQuery = `SELECT * FROM changeLogs WHERE id = ${req.params.id}`;
-    db.query(fetchQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            res.send(result);
-            console.log("Queried All User Data.");
-        }
-    });
+app.get('/logs/:id', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM changeLogs WHERE id = $1', [req.params.id]);
+        res.send(result.rows);
+        console.log("Queried All Change Log Data.");
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Get All Users
-app.get('/allusers', (req, res) => {
-    const userQuery = 'SELECT * FROM userTable';
-    db.query(userQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            res.send(result);
-            console.log("Queried All User Data.");
-        }
-    });
+app.get('/allusers', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM userTable');
+        res.send(result.rows);
+        console.log("Queried All User Data.");
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Add User
 app.post('/createuser', async (req, res) => {
@@ -314,18 +229,11 @@ app.post('/createuser', async (req, res) => {
         const username = req.body.username;
         const hashedPassword = await bcrypt_1.default.hash(req.body.password, 10);
         const role = req.body.role;
-        const inputValues = [username, hashedPassword, role];
-        const newUserQuery = 'INSERT INTO userTable (`username`, `password`, `role`) VALUES (?, ?, ?)';
-        db.query(newUserQuery, inputValues, (err, result) => {
-            if (err) {
-                console.log(err);
-            }
-            else {
-                res.send(`Added User: ${username}, with ${role} privileges.`);
-            }
-        });
+        await db.query('INSERT INTO userTable (username, password, role) VALUES ($1, $2, $3)', [username, hashedPassword, role]);
+        res.send(`Added User: ${username}, with ${role} privileges.`);
     }
-    catch {
+    catch (err) {
+        console.log(err);
         res.status(500).send();
     }
 });
@@ -335,36 +243,28 @@ app.put('/edituser/:id', async (req, res) => {
         const username = req.body.username;
         const hashedPassword = await bcrypt_1.default.hash(req.body.password, 10);
         const role = req.body.role;
-        const updateQuery = `UPDATE userTable SET username='${username}',password='${hashedPassword}',role='${role}' WHERE id = ${req.params.id}`;
-        db.query(updateQuery, (err, result) => {
-            if (err) {
-                console.log(err);
-            }
-            else {
-                res.send(result);
-                console.log(`Updated ${username}, with ${role} privileges.`);
-            }
-        });
+        const result = await db.query("UPDATE userTable SET username=$1, password=$2, role=$3 WHERE id = $4", [username, hashedPassword, role, req.params.id]);
+        res.send(result.rows);
+        console.log(`Updated ${username}, with ${role} privileges.`);
     }
-    catch {
+    catch (err) {
+        console.log(err);
         res.status(500).send();
     }
 });
 //Delete User
-app.delete('/deleteuser/:id', (req, res) => {
-    const deleteQuery = `DELETE FROM userTable WHERE id = ${req.params.id}`;
-    db.query(deleteQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            res.send("User deleted.");
-            console.log(`Deleted User ${req.params.id}`);
-        }
-    });
+app.delete('/deleteuser/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM userTable WHERE id = $1', [req.params.id]);
+        res.send("User deleted.");
+        console.log(`Deleted User ${req.params.id}`);
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 //Extract Equipment File
-app.post('/extract', (req, res) => {
+app.post('/extract', async (req, res) => {
     const shownColumns = req.body.shown;
     const shownString = Object.keys(Object.fromEntries(Object.entries(shownColumns).filter(entry => entry[1]))).toString();
     const columnQuery = shownString.replace(/show/g, "").split(",").map(col => col.charAt(0).toLowerCase() + col.slice(1)).toString().replace(",certificate", "").replace("certificate", "");
@@ -375,19 +275,14 @@ app.post('/extract', (req, res) => {
         filterQuery = ` WHERE ${columnFilter}='${dataFilter}'`;
     }
     const extractQuery = `SELECT ${columnQuery} FROM equipment${filterQuery}`;
-    //console.log(extractQuery)
-    db.query(extractQuery, (err, data, fields) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            const filename = `EquipmentList.csv`;
-            const ws = fs_1.default.createWriteStream(filename);
-            const jsonData = JSON.parse(JSON.stringify(data));
-            csv.write(jsonData, { headers: true }).on("finish", function () {
-                console.log(`Extracted ${filename}`);
-            }).pipe(ws);
-        }
+    try {
+        const result = await db.query(extractQuery);
+        const filename = `EquipmentList.csv`;
+        const ws = fs_1.default.createWriteStream(filename);
+        const jsonData = JSON.parse(JSON.stringify(result.rows));
+        csv.write(jsonData, { headers: true }).on("finish", function () {
+            console.log(`Extracted ${filename}`);
+        }).pipe(ws);
         setTimeout(() => {
             const csvFile = 'EquipmentList.csv';
             const csvBase64 = fs_1.default.readFileSync(csvFile, { encoding: 'base64' });
@@ -395,56 +290,45 @@ app.post('/extract', (req, res) => {
             res.set('Content-Type', 'text/csv');
             res.send('data:text/csv;base64,' + csvBase64);
         }, 1000);
-    });
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 // Automated Pending Equipment For Calibration Update
-node_cron_1.default.schedule("0 0 * * *", () => {
+node_cron_1.default.schedule("*/5 * * * *", async () => {
     console.log("Checking Equipment for due Calibrations...");
-    const updateQuery = 'SELECT `id`, `nextCalibration`, `status` FROM equipment';
-    db.query(updateQuery, (err, result) => {
-        if (err) {
-            console.log(err);
-        }
-        else {
-            const allEquipment = result;
-            const workingEquipment = allEquipment.filter(val => val.status === "Working");
-            const pending = workingEquipment.filter(val => -((0, moment_1.default)().diff(val.nextCalibration, "days")) <= 30);
-            const pendingIDs = pending.map(val => val.id);
-            for (let i = 0; i <= pendingIDs.length - 1; i++) {
-                const updateQuery = `UPDATE equipment SET status='For Calibration' WHERE id = ${pendingIDs[i]}`;
-                const infoQuery = `SELECT * FROM equipment WHERE id = ${pendingIDs[i]}`;
-                db.query(updateQuery, (err, result) => {
-                    if (err) {
-                        console.log("No pending equipment...");
-                    }
-                    else {
-                        console.log(`Updated Equipment ${pendingIDs[i]} to For Calibration Status.`);
-                    }
-                });
-                db.query(infoQuery, (err, result) => {
-                    if (err) {
-                        console.log(err);
-                    }
-                    else {
-                        const inputValues = [result[0].id, result[0].name, result[0].type, result[0].model, result[0].serial,
-                            result[0].description, result[0].brand, result[0].price, result[0].manufacturer,
-                            result[0].expiration, result[0].purchaseDate, result[0].calibrationDate, result[0].calibrationMethod, result[0].nextCalibration,
-                            result[0].location, result[0].issuedBy, result[0].issuedTo,
-                            result[0].remarks, result[0].status, result[0].certificate];
-                        const insertQuery = 'INSERT INTO changeLogs (`id`,`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,? ,?)';
-                        db.query(insertQuery, inputValues, (err, result) => {
-                            if (err) {
-                                console.log(err);
-                            }
-                            else {
-                                console.log(`Logged Equipment ${pendingIDs[i]} changes.`);
-                            }
-                        });
-                    }
-                });
+    try {
+        const result = await db.query("SELECT id, nextCalibration, status FROM equipment");
+        const allEquipment = result.rows;
+        const workingEquipment = allEquipment.filter(val => val.status === "Working");
+        const pending = workingEquipment.filter(val => -((0, moment_1.default)().diff(val.nextCalibration, "days")) <= 30);
+        const pendingIDs = pending.map(val => val.id);
+        for (let i = 0; i <= pendingIDs.length - 1; i++) {
+            try {
+                await db.query("UPDATE equipment SET status='For Calibration' WHERE id = $1", [pendingIDs[i]]);
+                console.log(`Updated Equipment ${pendingIDs[i]} to For Calibration Status.`);
+                const infoResult = await db.query("SELECT * FROM equipment WHERE id = $1", [pendingIDs[i]]);
+                const r = infoResult.rows[0];
+                const inputValues = [r.id, r.name, r.type, r.model, r.serial, r.description,
+                    r.brand, r.price, r.manufacturer, r.expiration, r.purchaseDate,
+                    r.calibrationDate, r.calibrationMethod, r.nextCalibration,
+                    r.location, r.issuedBy, r.issuedTo, r.remarks, r.status, r.certificate];
+                const insertQuery = `INSERT INTO changeLogs (id, name, type, model, serial, description, brand, price,
+                    manufacturer, expiration, purchaseDate, calibrationDate, calibrationMethod, nextCalibration,
+                    location, issuedBy, issuedTo, remarks, status, certificate)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`;
+                await db.query(insertQuery, inputValues);
+                console.log(`Logged Equipment ${pendingIDs[i]} changes.`);
+            }
+            catch (err) {
+                console.log(err);
             }
         }
-    });
+    }
+    catch (err) {
+        console.log(err);
+    }
 });
 app.listen(port, () => {
     console.log(`Equipment Management System Server is running on port ${port}...`);
