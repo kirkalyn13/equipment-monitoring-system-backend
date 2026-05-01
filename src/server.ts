@@ -173,14 +173,17 @@ app.get('/api/v1/equipment/:id/certificate', async (req: Request, res: Response)
  *
  * @route GET /changelogs/:id/:timestamp/certificate
  * @param req.params.id - The equipment ID.
- * @param req.params.timestamp - The timestamp of the changelog entry to retrieve the certificate from.
+ * @param req.params.logId - The changelog ID.
  * @returns {Promise<void>} Responds with the certificate file as an octet-stream attachment.
  */
-app.get('/api/v1/changelogs/:id/:timestamp/certificate', async (req: Request, res: Response) => {
+app.get('/api/v1/changelogs/:id/:logId/certificate', async (req: Request, res: Response) => {
     try {
         const result = await db.query(
-            "SELECT certificate FROM changeLogs WHERE id = $1 AND timestamp = $2",
-            [req.params.id, req.params.timestamp]
+            `SELECT certificate
+             FROM changeLogs
+             WHERE id = $1
+             AND indexnum = $2`,
+            [req.params.id, req.params.logId]
         )
         const filename = `certificate_${req.params.id}.pdf`
         res.set('Content-disposition', 'attachment; filename=' + filename)
@@ -188,7 +191,7 @@ app.get('/api/v1/changelogs/:id/:timestamp/certificate', async (req: Request, re
         res.send(result.rows)
         logger.info(`Downloaded Equipment ${req.params.id} (${req.params.timestamp}) Calibration Certificate.`)
     } catch (err) {
-        logger.error(err)
+        logger.error('Failed to download certificate', err)
     }
 })
 
