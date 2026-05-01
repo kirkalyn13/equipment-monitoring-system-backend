@@ -1,428 +1,475 @@
 import express, {Application, Request, Response} from 'express'
-import mysql, { Connection } from 'mysql'
+import { Pool } from 'pg'
+import dotenv from 'dotenv'
 import cors from 'cors'
 import fs from 'fs'
 import * as csv from 'fast-csv'
 import bcrypt from 'bcrypt'
 import cron from 'node-cron'
 import moment from 'moment'
+import { logger } from './util/logger'
+import morgan from 'morgan'
 
 const app: Application = express()
 const port: string | number = process.env.PORT || 3005
+dotenv.config()
 
 app.use(cors())
-app.use(express.json({limit: '50mb'}))
+app.use(express.json({limit: '64mb'}))
+app.use(express.urlencoded({limit: '64mb', extended: true}))
+app.use(
+    morgan('combined', {
+        stream: {
+            write: (message) => logger.info(message.trim()),
+        },
+    })
+)
 
-//Connect to SQL Database
-const db: Connection = mysql.createConnection({
-    user: 'testuser',
-    password: 'test123',
-    host: 'localhost',
-    database: 'equipmentdb',
-    dateStrings: true
-
+/**
+ * PostgreSQL connection pool.
+ * Configuration is sourced from environment variables:
+ * `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_NAME`, `DB_PORT`.
+ */
+const db = new Pool({
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    port: Number(process.env.DB_PORT),
 })
 
-//Login
-app.post('/login', async (req: Request, res: Response) => {
+/**
+ * Retrieves all equipment records from the database.
+ *
+ * @route GET /equipment
+ * @returns {Promise<void>} Responds with an array of all equipment rows.
+ */
+app.get('/api/v1/equipment', async (req: Request, res: Response) => {
+    try {
+        const result = await db.query('SELECT * FROM equipment ORDER BY id')
+        res.send(result.rows)
+        logger.info("Queried Equipment Data.")
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Retrieves a single equipment record by its ID.
+ *
+ * @route GET /equipment/:id
+ * @param req.params.id - The unique identifier of the equipment.
+ * @returns {Promise<void>} Responds with the matching equipment row.
+ */
+app.get('/api/v1/equipment/:id', async (req: Request, res: Response) => {
+    try {
+        const result = await db.query('SELECT * FROM equipment WHERE id = $1', [req.params.id])
+        res.send(result.rows)
+        logger.info(`Equipment ${req.params.id} Info.`)
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Adds a new equipment record to the database.
+ *
+ * @route POST /equipment
+ * @param req.body - Equipment fields including name, type, model, serial, description,
+ * brand, price, manufacturer, expiration, purchaseDate, calibrationDate, nextCalibration,
+ * calibrationMethod, location, issuedBy, issuedTo, remarks, status, certificate, and image.
+ * @returns {Promise<void>} Responds with the newly created equipment's ID.
+ */
+app.post('/api/v1/equipment', async (req: Request, res: Response) => {
+    const { eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer,
+        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpNextCalib, eqpCalibMethod,
+        eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, eqpImage } = req.body
+    const inputValues: any[] = [eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer,
+        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib,
+        eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, eqpImage]
+    const addQuery = `INSERT INTO equipment (name, type, model, serial, description, brand, price, manufacturer,
+        expiration, purchaseDate, calibrationDate, calibrationMethod, nextCalibration, location,
+        issuedBy, issuedTo, remarks, status, certificate, image)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id`
+    try {
+        const result = await db.query(addQuery, inputValues)
+        res.send(result.rows)
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Deletes an equipment record by its ID.
+ *
+ * @route DELETE /equipment/:id
+ * @param req.params.id - The unique identifier of the equipment to delete.
+ * @returns {Promise<void>} Responds with a confirmation message.
+ */
+app.delete('/api/v1/equipment/:id', async (req: Request, res: Response) => {
+    try {
+        await db.query('DELETE FROM equipment WHERE id = $1', [req.params.id])
+        res.send("Equipment deleted.")
+        logger.info(`Deleted Equipment ID: ${req.params.id}`)
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Updates an existing equipment record by its ID.
+ *
+ * @route PUT /equipment/:id
+ * @param req.params.id - The unique identifier of the equipment to update.
+ * @param req.body - Updated equipment fields. Accepts all equipment properties
+ * including `eqpForMaintenance` flag.
+ * @returns {Promise<void>} Responds with the updated equipment rows.
+ */
+app.put('/api/v1/equipment/:id', async (req: Request, res: Response) => {
+    const { eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer,
+        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpNextCalib, eqpCalibMethod, eqpForMaintenance,
+        eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, eqpImage } = req.body
+    const updateQuery = `UPDATE equipment SET name=$1, type=$2, model=$3, serial=$4, description=$5,
+        brand=$6, price=$7, manufacturer=$8, expiration=$9, purchaseDate=$10,
+        calibrationDate=$11, calibrationMethod=$12, forMaintenance=$13, nextCalibration=$14,
+        location=$15, issuedBy=$16, issuedTo=$17, remarks=$18, status=$19,
+        certificate=$20, image=$21 WHERE id = $22`
+    const inputValues: any[] = [eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice,
+        eqpManufacturer, eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpForMaintenance,
+        eqpNextCalib, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus,
+        eqpCertificate, eqpImage, req.params.id]
+    try {
+        const result = await db.query(updateQuery, inputValues)
+        res.send(result.rows)
+        logger.info(`Edited Equipment ${eqpName} (${eqpSerial}).`)
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Downloads the calibration certificate for a given equipment record.
+ *
+ * @route GET /equipment/:id/certificate
+ * @param req.params.id - The unique identifier of the equipment.
+ * @returns {Promise<void>} Responds with the certificate file as an octet-stream attachment
+ * named `certificate_{id}.pdf`.
+ */
+app.get('/api/v1/equipment/:id/certificate', async (req: Request, res: Response) => {
+    try {
+        const result = await db.query('SELECT certificate FROM equipment WHERE id = $1', [req.params.id])
+        const filename = `certificate_${req.params.id}.pdf`
+        res.set('Content-disposition', 'attachment; filename=' + filename)
+        res.set('Content-Type', 'application/octet-stream')
+        res.send(result.rows)
+        logger.info(`Downloaded Equipment ${req.params.id} Calibration Certificate.`)
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Downloads a historical calibration certificate from the change logs.
+ *
+ * @route GET /changelogs/:id/:timestamp/certificate
+ * @param req.params.id - The equipment ID.
+ * @param req.params.logId - The changelog ID.
+ * @returns {Promise<void>} Responds with the certificate file as an octet-stream attachment.
+ */
+app.get('/api/v1/changelogs/:id/:logId/certificate', async (req: Request, res: Response) => {
+    try {
+        const result = await db.query(
+            `SELECT certificate
+             FROM changeLogs
+             WHERE id = $1
+             AND indexnum = $2`,
+            [req.params.id, req.params.logId]
+        )
+        const filename = `certificate_${req.params.id}.pdf`
+        res.set('Content-disposition', 'attachment; filename=' + filename)
+        res.set('Content-Type', 'application/octet-stream')
+        res.send(result.rows)
+        logger.info(`Downloaded Equipment ${req.params.id} (${req.params.timestamp}) Calibration Certificate.`)
+    } catch (err) {
+        logger.error('Failed to download certificate', err)
+    }
+})
+
+/**
+ * Logs a snapshot of an equipment record's state to the change log.
+ *
+ * @route POST /changelogs/:id
+ * @param req.params.id - The equipment ID being logged.
+ * @param req.body - All equipment fields at the time of the change, plus `modifiedBy`
+ * to indicate which user triggered the update.
+ * @returns {Promise<void>} Responds with a confirmation message including the equipment name and serial.
+ */
+app.post('/api/v1/changelogs/:id', async (req: Request, res: Response) => {
+    const { eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer,
+        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpNextCalib, eqpCalibMethod, eqpForMaintenance,
+        eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, modifiedBy } = req.body
+    const inputValues: any[] = [req.params.id, eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand,
+        eqpPrice, eqpManufacturer, eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib,
+        eqpForMaintenance, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, modifiedBy]
+    const changeLogQuery = `INSERT INTO changeLogs (id, name, type, model, serial, description, brand, price,
+        manufacturer, expiration, purchaseDate, calibrationDate, calibrationMethod, nextCalibration,
+        forMaintenance, location, issuedBy, issuedTo, remarks, status, certificate, modifiedBy)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`
+    try {
+        await db.query(changeLogQuery, inputValues)
+        res.send(`Logged ${eqpName} (${eqpSerial}) changes.`)
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Retrieves all change log entries for a specific equipment record.
+ *
+ * @route GET /changelogs/:id
+ * @param req.params.id - The equipment ID whose logs are being fetched.
+ * @returns {Promise<void>} Responds with an array of all changelog rows for the given ID.
+ */
+app.get('/api/v1/changelogs/:id', async (req: Request, res: Response) => {
+    try {
+        const result = await db.query('SELECT * FROM changeLogs WHERE id = $1 ORDER BY timestamp', [req.params.id])
+        res.send(result.rows)
+        logger.info("Queried All Change Log Data.")
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Retrieves all users from the database.
+ *
+ * @route GET /users
+ * @returns {Promise<void>} Responds with an array of all user rows.
+ *
+ * @deprecated Use the new authentication service endpoint instead.
+ * This route exposes raw user data including hashed passwords and will be removed in a future release.
+ */
+app.get('/api/v1/users', async (req: Request, res: Response) => {
+    try {
+        const result = await db.query('SELECT * FROM userTable')
+        res.send(result.rows)
+        logger.info("Queried All User Data.")
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Creates a new user with a hashed password.
+ *
+ * @route POST /users
+ * @param req.body.username - The new user's username.
+ * @param req.body.password - The plaintext password (hashed with bcrypt before storage).
+ * @param req.body.role - The role to assign to the user.
+ * @returns {Promise<void>} Responds with a confirmation message.
+ *
+ * @deprecated Use the new authentication service for user creation.
+ * Direct password hashing in this route will be removed in a future release.
+ */
+app.post('/api/v1/users', async (req: Request, res: Response) => {
+    try {
+        const username: string = req.body.username
+        const hashedPassword: string = await bcrypt.hash(req.body.password, 10)
+        const role: string = req.body.role
+        await db.query(
+            'INSERT INTO userTable (username, password, role) VALUES ($1, $2, $3)',
+            [username, hashedPassword, role]
+        )
+        res.send(`Added User: ${username}, with ${role} privileges.`)
+    } catch (err) {
+        logger.error(err)
+        res.status(500).send()
+    }
+})
+
+/**
+ * Updates an existing user's credentials and role.
+ *
+ * @route PUT /users/:id
+ * @param req.params.id - The ID of the user to update.
+ * @param req.body.username - The updated username.
+ * @param req.body.password - The new plaintext password (re-hashed with bcrypt).
+ * @param req.body.role - The updated role.
+ * @returns {Promise<void>} Responds with the updated user rows.
+ *
+ * @deprecated Use the new authentication service for user updates.
+ * This route will be removed in a future release.
+ */
+app.put('/api/v1/users/:id', async (req: Request, res: Response) => {
+    try {
+        const username: string = req.body.username
+        const hashedPassword: string = await bcrypt.hash(req.body.password, 10)
+        const role: string = req.body.role
+        const result = await db.query(
+            "UPDATE userTable SET username=$1, password=$2, role=$3 WHERE id = $4",
+            [username, hashedPassword, role, req.params.id]
+        )
+        res.send(result.rows)
+        logger.info(`Updated ${username}, with ${role} privileges.`)
+    } catch (err) {
+        logger.error(err)
+        res.status(500).send()
+    }
+})
+
+/**
+ * Deletes a user by their ID.
+ *
+ * @route DELETE /users/:id
+ * @param req.params.id - The ID of the user to delete.
+ * @returns {Promise<void>} Responds with a confirmation message.
+ */
+app.delete('/api/v1/users/:id', async (req: Request, res: Response) => {
+    try {
+        await db.query('DELETE FROM userTable WHERE id = $1', [req.params.id])
+        res.send("User deleted.")
+        logger.info(`Deleted User ${req.params.id}`)
+    } catch (err) {
+        logger.error(err)
+    }
+})
+
+/**
+ * Authenticates a user against stored credentials.
+ *
+ * @route POST /login
+ * @param req.body.username - The username attempting to log in.
+ * @param req.body.password - The plaintext password to verify against the stored hash.
+ * @returns {Promise<void>} Responds with an object containing `username`, `role`,
+ * and `login` (boolean). Returns `login: false` on invalid credentials.
+ *
+ * @deprecated Use the new JWT-based authentication endpoint instead.
+ * This route fetches all users to perform credential matching, which is inefficient
+ * and insecure at scale. Will be removed in a future release.
+ */
+app.post('/api/v1/login', async (req: Request, res: Response) => {
     const username: string = req.body.username
     const password: string = req.body.password
-    const usersQuery: string = 'SELECT * FROM userTable'
-    console.log(`Requesting Access: ${username}`)
-    db.query(usersQuery, async (err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            const allUsers: any[] = result
-            const usernames: string[] = allUsers.map(user => user.username)
-            if(usernames.includes(username)){
-                const userRef = allUsers.filter(user => user.username === username)
-                try{
-                    const login = await bcrypt.compare(password, userRef[0].password)
-                    if(login){
-                        console.log(`User Login: ${username}`)
-                        res.send({
-                            username: username,
-                            role: userRef[0].role,
-                            login: true,
-                        })
-                    }
-                    else{
-                        console.log("Access Denied: Invalid Credentials.")
-                        res.send({
-                            username: '',
-                            role: '',
-                            login: false,
-                    })
-                }
-                }catch{
-                    res.status(400).send("User Not Found.")
-                }
-            }else{
-                console.log("Access Denied: Invalid Credentials.")
+    logger.info(`Requesting Access: ${username}`)
+    try {
+        const result = await db.query('SELECT * FROM userTable')
+        const allUsers: any[] = result.rows
+        const userRef = allUsers.filter(user => user.username === username)
+        if (userRef.length > 0) {
+            const login = await bcrypt.compare(password, userRef[0].password)
+            if (login) {
+                logger.info(`User Login: ${username}`)
                 res.send({
-                    username: '',
-                    role: '',
-                    login: false,
+                    username: username,
+                    role: userRef[0].role,
+                    login: true,
                 })
+            } else {
+                logger.info("Access Denied: Invalid Credentials.")
+                res.send({ username: '', role: '', login: false })
             }
+        } else {
+            logger.info("Access Denied: Invalid Credentials.")
+            res.send({ username: '', role: '', login: false })
         }
-    })
-})
-
-//Get All Equipment
-app.get('/allequipment', (req: Request, res: Response) =>{
-    const equipmentQuery: string = 'SELECT * FROM equipment'
-    db.query(equipmentQuery,(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            res.send(result)
-            console.log("Queried Equipment Data.")
-        }
-    })
-})
-
-//Get Single Equipment
-app.get('/equipment/:id', (req: Request, res: Response) =>{
-    const equipmentQuery: string = `SELECT * FROM equipment WHERE id = ${req.params.id}`
-    db.query(equipmentQuery,(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            res.send(result)
-            console.log(`Equipment ${req.params.id} Info.`)
-        }
-    })
-})
-
-//Add New Equipment
-app.post('/create', (req: Request, res: Response) => {
-    const eqpName: string = req.body.eqpName
-    const eqpType: string = req.body.eqpType
-    const eqpModel: string = req.body.eqpModel
-    const eqpSerial: string = req.body.eqpSerial
-    const eqpDesc: string = req.body.eqpDesc
-    const eqpBrand: string = req.body.eqpBrand
-    const eqpPrice: number = req.body.eqpPrice
-    const eqpManufacturer: string = req.body.eqpManufacturer
-    const eqpExp: any = req.body.eqpExp
-    const eqpPurchaseDate: any = req.body.eqpPurchaseDate
-    const eqpCalibDate: any = req.body.eqpCalibDate
-    const eqpNextCalib: any = req.body.eqpNextCalib
-    const eqpCalibMethod: string = req.body.eqpCalibMethod
-    const eqpLoc: string = req.body.eqpLoc
-    const eqpIssuedBy: string = req.body.eqpIssuedBy
-    const eqpIssuedTo: string = req.body.eqpIssuedTo
-    const eqpRemarks: string = req.body.eqpRemarks
-    const eqpStatus: string = req.body.eqpStatus
-    const eqpCertificate: any = req.body.eqpCertificate
-    const eqpImage: string = req.body.eqpImage
-    const inputValues: any[] = [eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer, 
-        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, eqpImage]
-    const addQuery: string = 'INSERT INTO equipment (`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`, `image`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,? ,? ,?)'
-    db.query(addQuery, inputValues, (err, result) =>{
-        if(err){
-            console.log(err)
-        }else{
-            const responseQuery: string = `SELECT id FROM equipment ORDER BY id DESC LIMIT 1`
-            db.query(responseQuery,(err,result) => {
-                if(err){
-                    console.log(err)
-                }else{
-                    res.send(result)
-                }
-            })
-        }
-    })
-})
-
-//Delete Equipment
-app.delete('/delete/:id',(req: Request, res: Response) =>{
-    const deleteQuery: string = `DELETE FROM equipment WHERE id = ${req.params.id}`
-    db.query(deleteQuery, (err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            res.send("Equipment deleted.")
-            console.log(`Deleted Equipment ID: ${req.params.id}`)
-        }
-    })
-})
-
-
-//Edit Equipment
-app.put('/edit/:id', (req: Request, res: Response) => {
-    const eqpName: string = req.body.eqpName
-    const eqpType: string = req.body.eqpType
-    const eqpModel: string = req.body.eqpModel
-    const eqpSerial: string = req.body.eqpSerial
-    const eqpDesc: string = req.body.eqpDesc
-    const eqpBrand: string = req.body.eqpBrand
-    const eqpPrice: number = req.body.eqpPrice
-    const eqpManufacturer: string = req.body.eqpManufacturer
-    const eqpExp: any = req.body.eqpExp
-    const eqpPurchaseDate: any = req.body.eqpPurchaseDate
-    const eqpCalibDate: any = req.body.eqpCalibDate
-    const eqpNextCalib: any = req.body.eqpNextCalib
-    const eqpCalibMethod: string = req.body.eqpCalibMethod
-    const eqpForMaintenance: string = req.body.eqpForMaintenance
-    const eqpLoc: string = req.body.eqpLoc
-    const eqpIssuedBy: string = req.body.eqpIssuedBy
-    const eqpIssuedTo: string = req.body.eqpIssuedTo
-    const eqpRemarks: string = req.body.eqpRemarks
-    const eqpStatus: string = req.body.eqpStatus
-    const eqpCertificate: any = req.body.eqpCertificate
-    const eqpImage: string = req.body.eqpImage
-    const updateQuery: string = `UPDATE equipment SET name='${eqpName}',type='${eqpType}',model='${eqpModel}',serial='${eqpSerial}',
-    description='${eqpDesc}',brand='${eqpBrand}',price='${eqpPrice}',manufacturer='${eqpManufacturer}',
-    expiration='${eqpExp}',purchaseDate='${eqpPurchaseDate}',calibrationDate='${eqpCalibDate}',
-    calibrationMethod='${eqpCalibMethod}',forMaintenance='${eqpForMaintenance}',
-    nextCalibration='${eqpNextCalib}',location='${eqpLoc}',issuedBy='${eqpIssuedBy}',issuedTo='${eqpIssuedTo}',remarks='${eqpRemarks}' ,
-    status='${eqpStatus}',certificate='${eqpCertificate}',image='${eqpImage}' WHERE id = ${req.params.id}`
-    db.query(updateQuery,(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            res.send(result)
-            console.log(`Edited Equipment ${eqpName} (${eqpSerial}).`)
-        }
-    })
-})
-
-//Download Certificate
-app.get('/certificate/:id', (req: Request, res: Response) =>{
-    const downloadQuery: string = `SELECT certificate FROM equipment WHERE id = ${req.params.id}`
-    db.query(downloadQuery,(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            const file: any = result
-            const filename: string = `certificate_${req.params.id}.pdf`
-            res.set('Content-disposition', 'attachment; filename=' + filename);
-            res.set('Content-Type', 'application/octet-stream')
-            res.send(file)
-            console.log(`Downloaded Equipment ${req.params.id} Calibration Certificate.`)
-        }
-    })
-})
-
-//Download Certificate via changeLogs
-app.get('/changelog/certificate/:id/:timestamp', (req: Request, res: Response) =>{
-    const downloadQuery: string = `SELECT certificate FROM changeLogs WHERE id = ${req.params.id} AND timestamp = '${req.params.timestamp}'`
-    db.query(downloadQuery,(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            const file: any = result
-            const filename: string = `certificate_${req.params.id}.pdf`
-            res.set('Content-disposition', 'attachment; filename=' + filename);
-            res.set('Content-Type', 'application/octet-stream')
-            res.send(file)
-            console.log(`Downloaded Equipment ${req.params.id} (${req.params.timestamp}) Calibration Certificate.`)
-        }
-    })
-})
-
-//Log Equipment Changes
-app.post('/changelog/:id', (req: Request, res: Response) => {
-    const id: string = req.params.id
-    const eqpName: string = req.body.eqpName
-    const eqpType: string = req.body.eqpType
-    const eqpModel: string = req.body.eqpModel
-    const eqpSerial: string = req.body.eqpSerial
-    const eqpDesc: string = req.body.eqpDesc
-    const eqpBrand: string= req.body.eqpBrand
-    const eqpPrice: number = req.body.eqpPrice
-    const eqpManufacturer: string = req.body.eqpManufacturer
-    const eqpExp: any = req.body.eqpExp
-    const eqpPurchaseDate: any = req.body.eqpPurchaseDate
-    const eqpCalibDate: any = req.body.eqpCalibDate
-    const eqpNextCalib: any= req.body.eqpNextCalib
-    const eqpCalibMethod: string = req.body.eqpCalibMethod
-    const eqpForMaintenance: string = req.body.eqpForMaintenance
-    const eqpLoc: string = req.body.eqpLoc
-    const eqpIssuedBy: string = req.body.eqpIssuedBy
-    const eqpIssuedTo: string = req.body.eqpIssuedTo
-    const eqpRemarks: string = req.body.eqpRemarks
-    const eqpStatus: string = req.body.eqpStatus
-    const eqpCertificate: any = req.body.eqpCertificate
-    const modifiedBy: string = req.body.modifiedBy
-    const inputValues: any[] = [id, eqpName, eqpType, eqpModel, eqpSerial, eqpDesc, eqpBrand, eqpPrice, eqpManufacturer, 
-        eqpExp, eqpPurchaseDate, eqpCalibDate, eqpCalibMethod, eqpNextCalib, eqpForMaintenance, eqpLoc, eqpIssuedBy, eqpIssuedTo, eqpRemarks, eqpStatus, eqpCertificate, modifiedBy]
-    const changeLogQuery: string = 'INSERT INTO changeLogs (`id`,`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `forMaintenance`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`, `modifiedBy`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? ,? ,? ,? ,?)'
-    db.query(changeLogQuery, inputValues, (err, result) =>{
-        if(err){
-            console.log(err)
-        }else{
-            res.send(`Logged ${eqpName} (${eqpSerial}) changes.`)
-        }
-    })
-})
-
-//Fetch Logs
-app.get('/logs/:id', (req: Request, res: Response) =>{
-    const fetchQuery: string = `SELECT * FROM changeLogs WHERE id = ${req.params.id}`
-    db.query(fetchQuery,(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            res.send(result)
-            console.log("Queried All User Data.")
-        }
-    })
-})
-
-//Get All Users
-app.get('/allusers', (req: Request, res: Response) =>{
-    const userQuery: string = 'SELECT * FROM userTable'
-    db.query(userQuery,(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            res.send(result)
-            console.log("Queried All User Data.")
-        }
-    })
-})
-
-//Add User
-app.post('/createuser', async (req: Request, res: Response) => {
-    try{
-        const username: string = req.body.username
-        const hashedPassword: string = await bcrypt.hash(req.body.password, 10)
-        const role: string = req.body.role
-        const inputValues: string[] = [username, hashedPassword, role]
-        const newUserQuery: string = 'INSERT INTO userTable (`username`, `password`, `role`) VALUES (?, ?, ?)'
-        db.query(newUserQuery, inputValues, (err, result) =>{
-            if(err){
-                console.log(err)
-            }else{
-                res.send(`Added User: ${username}, with ${role} privileges.`)
-            }
-        })
-    }catch{
-        res.status(500).send()
+    } catch (err) {
+        logger.error(err)
+        res.status(400).send("User Not Found.")
     }
 })
 
-//Edit User
-app.put('/edituser/:id', async (req: Request, res: Response) => {
-    try{
-        const username: string = req.body.username
-        const hashedPassword: string = await bcrypt.hash(req.body.password, 10)
-        const role: string = req.body.role
-        const updateQuery: string = `UPDATE userTable SET username='${username}',password='${hashedPassword}',role='${role}' WHERE id = ${req.params.id}`
-        db.query(updateQuery,(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            res.send(result)
-            console.log(`Updated ${username}, with ${role} privileges.`)
-        }
-    })
-    }catch{
-        res.status(500).send()
-    }
-})
-
-//Delete User
-app.delete('/deleteuser/:id',(req: Request, res: Response) =>{
-    const deleteQuery: string = `DELETE FROM userTable WHERE id = ${req.params.id}`
-    db.query(deleteQuery, (err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            res.send("User deleted.")
-            console.log(`Deleted User ${req.params.id}`)
-        }
-    })
-})
-
-//Extract Equipment File
-app.post('/extract',(req: Request, res: Response) => {
+/**
+ * Exports a filtered subset of equipment records as a CSV file.
+ *
+ * @route POST /extract
+ * @param req.body.shown - An object mapping column visibility flags (e.g. `showName: true`).
+ * Certificate columns are automatically excluded from the export.
+ * @param req.body.dataFilter - An object with `column` and `data` fields used to filter rows.
+ * Pass `data: "All"` to export without filtering.
+ * @returns {Promise<void>} Responds with the CSV file as a base64-encoded attachment.
+ *
+ * @remarks
+ * The file is written to disk temporarily before being read and sent.
+ * A 1-second delay is used to ensure the write completes before reading.
+ * Consider replacing this with a stream-based approach for production use.
+ */
+app.post('/api/v1/equipment/extract', async (req: Request, res: Response) => {
     const shownColumns: string = req.body.shown
     const shownString: string = Object.keys(Object.fromEntries(Object.entries(shownColumns).filter(entry => entry[1]))).toString()
-    const columnQuery: string = shownString.replace(/show/g,"").split(",").map(col => col.charAt(0).toLowerCase()  + col.slice(1)).toString().replace(",certificate","").replace("certificate","")
+    const columnQuery: string = shownString.replace(/show/g,"").split(",").map(col => col.charAt(0).toLowerCase() + col.slice(1)).toString().replace(",certificate","").replace("certificate","")
     let filterQuery: string = ""
     const columnFilter: string = req.body.dataFilter.column
     const dataFilter: string = req.body.dataFilter.data
-    if(dataFilter !== "All"){
+    if (dataFilter !== "All") {
         filterQuery = ` WHERE ${columnFilter}='${dataFilter}'`
     }
     const extractQuery: string = `SELECT ${columnQuery} FROM equipment${filterQuery}`
-    //console.log(extractQuery)
-    db.query(extractQuery, (err, data, fields) => {
-        if(err){
-            console.log(err)
-        }else{
-            const filename: string= `EquipmentList.csv`
-            const ws = fs.createWriteStream(filename)
-            const jsonData: any[] = JSON.parse(JSON.stringify(data))
+    try {
+        const result = await db.query(extractQuery)
+        const filename = `EquipmentList.csv`
+        const ws = fs.createWriteStream(filename)
+        const jsonData: any[] = JSON.parse(JSON.stringify(result.rows))
+        csv.write(jsonData, { headers: true }).on("finish", function() {
+            logger.info(`Extracted ${filename}`)
+        }).pipe(ws)
 
-            csv.write(jsonData, { headers: true }).on("finish", function() {
-                console.log(`Extracted ${filename}`)
-            }).pipe(ws)
-            
-            }
-            setTimeout(() => {
-                const csvFile: string = 'EquipmentList.csv'
-                const csvBase64: any = fs.readFileSync(csvFile, {encoding: 'base64'})
-                res.set('Content-disposition', 'attachment; filename=' + csvFile)
-                res.set('Content-Type', 'text/csv')
-                res.send('data:text/csv;base64,' + csvBase64)
-            }, 1000)
-            
-  })
+        setTimeout(() => {
+            const csvFile = 'EquipmentList.csv'
+            const csvBase64: any = fs.readFileSync(csvFile, { encoding: 'base64' })
+            res.set('Content-disposition', 'attachment; filename=' + csvFile)
+            res.set('Content-Type', 'text/csv')
+            res.send('data:text/csv;base64,' + csvBase64)
+        }, 1000)
+    } catch (err) {
+        logger.error(err)
+    }
 })
 
-// Automated Pending Equipment For Calibration Update
-cron.schedule("*/5 * * * *" , () => {
-    console.log("Checking Equipment for due Calibrations...")
-    const updateQuery: string = 'SELECT `id`, `nextCalibration`, `status` FROM equipment'
-    db.query(updateQuery,(err,result) => {
-        if(err){
-            console.log(err)
-        }else{
-            const allEquipment: any[] = result
-            const workingEquipment: any[] = allEquipment.filter(val => val.status === "Working")
-            const pending: any[] = workingEquipment.filter(val => -(moment().diff(val.nextCalibration, "days")) <= 30)
-            const pendingIDs: any[]  = pending.map(val => val.id)
-            for(let i=0; i <= pendingIDs.length - 1; i ++){
-                const updateQuery: string = `UPDATE equipment SET status='For Calibration' WHERE id = ${pendingIDs[i]}`
-                const infoQuery: string = `SELECT * FROM equipment WHERE id = ${pendingIDs[i]}`
-                db.query(updateQuery,(err,result) => {
-                if(err){
-                    console.log("No pending equipment...")
-                }else{
-                    console.log(`Updated Equipment ${pendingIDs[i]} to For Calibration Status.`)
-                }
-                })
-                db.query(infoQuery, (err,result) => {
-                    if(err){
-                        console.log(err)
-                    }else{
-                        const inputValues: any[] = [result[0].id, result[0].name, result[0].type, result[0].model, result[0].serial, 
-                            result[0].description, result[0].brand, result[0].price, result[0].manufacturer, 
-                            result[0].expiration, result[0].purchaseDate, result[0].calibrationDate, result[0].calibrationMethod, result[0].nextCalibration, 
-                            result[0].location, result[0].issuedBy, result[0].issuedTo, 
-                            result[0].remarks, result[0].status, result[0].certificate]
-                        const insertQuery: string = 'INSERT INTO changeLogs (`id`,`name`, `type`, `model`, `serial`, `description`, `brand`, `price`, `manufacturer`, `expiration`, `purchaseDate`, `calibrationDate`, `calibrationMethod`, `nextCalibration`, `location`, `issuedBy`, `issuedTo`, `remarks`, `status`, `certificate`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,? ,?)'
-                        db.query(insertQuery, inputValues, (err, result) =>{
-                        if(err){
-                            console.log(err)
-                        }else{
-                            console.log(`Logged Equipment ${pendingIDs[i]} changes.`)
-                        }
-                    }
-                )
-                    }
-            })
+/**
+ * Scheduled cron job that runs every 5 minutes to check for equipment
+ * approaching their calibration due date.
+ *
+ * @remarks
+ * Queries all equipment with a `Working` status and flags any records
+ * whose `nextCalibration` date falls within the next 30 days by updating
+ * their status to `"For Calibration"`. Each updated record is also
+ * automatically logged to the `changeLogs` table.
+ */
+cron.schedule("*/5 * * * *", async () => {
+    logger.info("Checking Equipment for due Calibrations...")
+    try {
+        const result = await db.query("SELECT id, nextCalibration, status FROM equipment")
+        const allEquipment: any[] = result.rows
+        const workingEquipment = allEquipment.filter(val => val.status === "Working")
+        const pending = workingEquipment.filter(val => -(moment().diff(val.nextCalibration, "days")) <= 30)
+        const pendingIDs = pending.map(val => val.id)
+
+        for (let i = 0; i <= pendingIDs.length - 1; i++) {
+            try {
+                await db.query("UPDATE equipment SET status='For Calibration' WHERE id = $1", [pendingIDs[i]])
+                logger.info(`Updated Equipment ${pendingIDs[i]} to For Calibration Status.`)
+
+                const infoResult = await db.query("SELECT * FROM equipment WHERE id = $1", [pendingIDs[i]])
+                const r = infoResult.rows[0]
+                const inputValues: any[] = [r.id, r.name, r.type, r.model, r.serial, r.description,
+                    r.brand, r.price, r.manufacturer, r.expiration, r.purchaseDate,
+                    r.calibrationDate, r.calibrationMethod, r.nextCalibration,
+                    r.location, r.issuedBy, r.issuedTo, r.remarks, r.status, r.certificate]
+                const insertQuery = `INSERT INTO changeLogs (id, name, type, model, serial, description, brand, price,
+                    manufacturer, expiration, purchaseDate, calibrationDate, calibrationMethod, nextCalibration,
+                    location, issuedBy, issuedTo, remarks, status, certificate)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`
+                await db.query(insertQuery, inputValues)
+                logger.info(`Logged Equipment ${pendingIDs[i]} changes.`)
+            } catch (err) {
+                logger.error(err)
+            }
         }
+    } catch (err) {
+        logger.error(err)
     }
-    })
 })
 
 app.listen(port, () => {
-    console.log(`Equipment Management System Server is running on port ${port}...`)
+    logger.info(`Equipment Management System Server is running on port ${port}...`)
 })
