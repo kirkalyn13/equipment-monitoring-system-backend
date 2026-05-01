@@ -46,7 +46,7 @@ const db = new Pool({
  */
 app.get('/api/v1/equipment', async (req: Request, res: Response) => {
     try {
-        const result = await db.query('SELECT * FROM equipment')
+        const result = await db.query('SELECT * FROM equipment ORDER BY id')
         res.send(result.rows)
         logger.info("Queried Equipment Data.")
     } catch (err) {
@@ -232,7 +232,7 @@ app.post('/api/v1/changelogs/:id', async (req: Request, res: Response) => {
  */
 app.get('/api/v1/changelogs/:id', async (req: Request, res: Response) => {
     try {
-        const result = await db.query('SELECT * FROM changeLogs WHERE id = $1', [req.params.id])
+        const result = await db.query('SELECT * FROM changeLogs WHERE id = $1 ORDER BY timestamp', [req.params.id])
         res.send(result.rows)
         logger.info("Queried All Change Log Data.")
     } catch (err) {
