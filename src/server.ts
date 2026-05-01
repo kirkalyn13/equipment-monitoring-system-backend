@@ -9,6 +9,7 @@ import cron from 'node-cron'
 import moment from 'moment'
 import { logger } from './util/logger'
 import morgan from 'morgan'
+import admin from './util/firebase'
 
 const app: Application = express()
 const port: string | number = process.env.PORT || 3005
@@ -41,7 +42,7 @@ const db = new Pool({
 /**
  * Retrieves all equipment records from the database.
  *
- * @route GET /equipment
+ * @route GET /api/v1/equipment
  * @returns {Promise<void>} Responds with an array of all equipment rows.
  */
 app.get('/api/v1/equipment', async (req: Request, res: Response) => {
@@ -57,7 +58,7 @@ app.get('/api/v1/equipment', async (req: Request, res: Response) => {
 /**
  * Retrieves a single equipment record by its ID.
  *
- * @route GET /equipment/:id
+ * @route GET /api/v1/equipment/:id
  * @param req.params.id - The unique identifier of the equipment.
  * @returns {Promise<void>} Responds with the matching equipment row.
  */
@@ -74,7 +75,7 @@ app.get('/api/v1/equipment/:id', async (req: Request, res: Response) => {
 /**
  * Adds a new equipment record to the database.
  *
- * @route POST /equipment
+ * @route POST /api/v1/equipment
  * @param req.body - Equipment fields including name, type, model, serial, description,
  * brand, price, manufacturer, expiration, purchaseDate, calibrationDate, nextCalibration,
  * calibrationMethod, location, issuedBy, issuedTo, remarks, status, certificate, and image.
@@ -102,7 +103,7 @@ app.post('/api/v1/equipment', async (req: Request, res: Response) => {
 /**
  * Deletes an equipment record by its ID.
  *
- * @route DELETE /equipment/:id
+ * @route DELETE /api/v1/equipment/:id
  * @param req.params.id - The unique identifier of the equipment to delete.
  * @returns {Promise<void>} Responds with a confirmation message.
  */
@@ -119,7 +120,7 @@ app.delete('/api/v1/equipment/:id', async (req: Request, res: Response) => {
 /**
  * Updates an existing equipment record by its ID.
  *
- * @route PUT /equipment/:id
+ * @route PUT /api/v1/equipment/:id
  * @param req.params.id - The unique identifier of the equipment to update.
  * @param req.body - Updated equipment fields. Accepts all equipment properties
  * including `eqpForMaintenance` flag.
@@ -150,7 +151,7 @@ app.put('/api/v1/equipment/:id', async (req: Request, res: Response) => {
 /**
  * Downloads the calibration certificate for a given equipment record.
  *
- * @route GET /equipment/:id/certificate
+ * @route GET /api/v1/equipment/:id/certificate
  * @param req.params.id - The unique identifier of the equipment.
  * @returns {Promise<void>} Responds with the certificate file as an octet-stream attachment
  * named `certificate_{id}.pdf`.
@@ -171,7 +172,7 @@ app.get('/api/v1/equipment/:id/certificate', async (req: Request, res: Response)
 /**
  * Downloads a historical calibration certificate from the change logs.
  *
- * @route GET /changelogs/:id/:timestamp/certificate
+ * @route GET /api/v1/changelogs/:id/:timestamp/certificate
  * @param req.params.id - The equipment ID.
  * @param req.params.logId - The changelog ID.
  * @returns {Promise<void>} Responds with the certificate file as an octet-stream attachment.
@@ -198,7 +199,7 @@ app.get('/api/v1/changelogs/:id/:logId/certificate', async (req: Request, res: R
 /**
  * Logs a snapshot of an equipment record's state to the change log.
  *
- * @route POST /changelogs/:id
+ * @route POST /api/v1/changelogs/:id
  * @param req.params.id - The equipment ID being logged.
  * @param req.body - All equipment fields at the time of the change, plus `modifiedBy`
  * to indicate which user triggered the update.
@@ -226,7 +227,7 @@ app.post('/api/v1/changelogs/:id', async (req: Request, res: Response) => {
 /**
  * Retrieves all change log entries for a specific equipment record.
  *
- * @route GET /changelogs/:id
+ * @route GET /api/v1/changelogs/:id
  * @param req.params.id - The equipment ID whose logs are being fetched.
  * @returns {Promise<void>} Responds with an array of all changelog rows for the given ID.
  */
@@ -249,7 +250,7 @@ app.get('/api/v1/changelogs/:id', async (req: Request, res: Response) => {
  * @deprecated Use the new authentication service endpoint instead.
  * This route exposes raw user data including hashed passwords and will be removed in a future release.
  */
-app.get('/api/v1/users', async (req: Request, res: Response) => {
+app.get('/users', async (req: Request, res: Response) => {
     try {
         const result = await db.query('SELECT * FROM userTable')
         res.send(result.rows)
@@ -271,7 +272,7 @@ app.get('/api/v1/users', async (req: Request, res: Response) => {
  * @deprecated Use the new authentication service for user creation.
  * Direct password hashing in this route will be removed in a future release.
  */
-app.post('/api/v1/users', async (req: Request, res: Response) => {
+app.post('/users', async (req: Request, res: Response) => {
     try {
         const username: string = req.body.username
         const hashedPassword: string = await bcrypt.hash(req.body.password, 10)
@@ -300,7 +301,7 @@ app.post('/api/v1/users', async (req: Request, res: Response) => {
  * @deprecated Use the new authentication service for user updates.
  * This route will be removed in a future release.
  */
-app.put('/api/v1/users/:id', async (req: Request, res: Response) => {
+app.put('/users/:id', async (req: Request, res: Response) => {
     try {
         const username: string = req.body.username
         const hashedPassword: string = await bcrypt.hash(req.body.password, 10)
@@ -318,13 +319,52 @@ app.put('/api/v1/users/:id', async (req: Request, res: Response) => {
 })
 
 /**
+ * Updates a user's authentication details.
+ *
+ * @route PUT /api/v1/users/:uid
+ *
+ * @param req - Express request object
+ * @param req.params.uid - The unique identifier of the user to update
+ * @param req.body.email - (Optional) New email address for the user
+ * @param req.body.password - (Optional) New password for the user
+ *
+ * @param res - Express response object
+ *
+ * @returns {Promise<void>}
+ * Responds with:
+ * - `{ success: true }` on successful update
+ * - `{ error: string }` with HTTP 500 if the update fails
+ *
+ * @remarks
+ * - At least one of `email` or `password` must be provided; otherwise, no updates will be applied.
+ * - Passwords are handled by Firebase Admin SDK and are securely hashed automatically.
+ * - This endpoint directly calls `admin.auth().updateUser`, so it assumes Firebase Admin is properly initialized.
+ *
+ */
+app.put('/api/v1/users/:uid', async (req, res) => {
+  const { uid } = req.params
+  const { email, password } = req.body
+  
+  const updates: any = {}
+  if (email) updates.email = email
+  if (password) updates.password = password
+
+  try {
+    await admin.auth().updateUser(uid, updates)
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err })
+  }
+})
+
+/**
  * Deletes a user by their ID.
  *
  * @route DELETE /users/:id
  * @param req.params.id - The ID of the user to delete.
  * @returns {Promise<void>} Responds with a confirmation message.
  */
-app.delete('/api/v1/users/:id', async (req: Request, res: Response) => {
+app.delete('/users/:id', async (req: Request, res: Response) => {
     try {
         await db.query('DELETE FROM userTable WHERE id = $1', [req.params.id])
         res.send("User deleted.")
@@ -332,6 +372,38 @@ app.delete('/api/v1/users/:id', async (req: Request, res: Response) => {
     } catch (err) {
         logger.error(err)
     }
+})
+
+/**
+ * Deletes a user from the authentication system.
+ *
+ * @route DELETE /api/v1/users/:uid
+ *
+ * @param req - Express request object
+ * @param req.params.uid - The unique identifier of the user to delete
+ *
+ * @param res - Express response object
+ *
+ * @returns {Promise<void>}
+ * Responds with:
+ * - `{ success: true }` on successful deletion
+ * - `{ error: string }` with HTTP 500 if the deletion fails
+ *
+ * @remarks
+ * - This operation permanently deletes the user from Firebase Authentication.
+ * - This does NOT automatically delete related records in your application database (if any).
+ * - Ensure cascading cleanup is handled separately if required.
+ *
+ */
+app.delete('/api/v1/users/:uid', async (req, res) => {
+  const { uid } = req.params
+
+  try {
+    await admin.auth().deleteUser(uid)
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err })
+  }
 })
 
 /**
@@ -347,7 +419,7 @@ app.delete('/api/v1/users/:id', async (req: Request, res: Response) => {
  * This route fetches all users to perform credential matching, which is inefficient
  * and insecure at scale. Will be removed in a future release.
  */
-app.post('/api/v1/login', async (req: Request, res: Response) => {
+app.post('/login', async (req: Request, res: Response) => {
     const username: string = req.body.username
     const password: string = req.body.password
     logger.info(`Requesting Access: ${username}`)
@@ -381,7 +453,7 @@ app.post('/api/v1/login', async (req: Request, res: Response) => {
 /**
  * Exports a filtered subset of equipment records as a CSV file.
  *
- * @route POST /extract
+ * @route POST /api/v1/equipment/extract
  * @param req.body.shown - An object mapping column visibility flags (e.g. `showName: true`).
  * Certificate columns are automatically excluded from the export.
  * @param req.body.dataFilter - An object with `column` and `data` fields used to filter rows.
