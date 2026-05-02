@@ -15,16 +15,10 @@ const app: Application = express()
 const port: string | number = process.env.PORT || 3005
 dotenv.config()
 
-app.use(cors())
-app.use(express.json({limit: '64mb'}))
+app.use(cors({ origin: "https://sea-ems.vercel.app"}))
+app.use(morgan('combined', {stream: {write: (message) => logger.info(message.trim())}}))
 app.use(express.urlencoded({limit: '64mb', extended: true}))
-app.use(
-    morgan('combined', {
-        stream: {
-            write: (message) => logger.info(message.trim()),
-        },
-    })
-)
+app.use(express.json({limit: '64mb'}))
 
 /**
  * PostgreSQL connection pool.
