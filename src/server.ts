@@ -15,7 +15,13 @@ const app: Application = express()
 const port: string | number = process.env.PORT || 3005
 dotenv.config()
 
-app.use(cors({ origin: "https://sea-ems.vercel.app"}))
+app.use(cors({ 
+  origin: [
+    "https://sea-ems.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:3005"
+  ]
+}))
 app.use(morgan('combined', {stream: {write: (message) => logger.info(message.trim())}}))
 app.use(express.urlencoded({limit: '64mb', extended: true}))
 app.use(express.json({limit: '64mb'}))
