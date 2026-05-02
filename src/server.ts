@@ -31,8 +31,9 @@ const db = new Pool({
     host: process.env.DB_HOST,
     database: process.env.DB_NAME,
     port: Number(process.env.DB_PORT),
+    connectionString: process.env.DATABASE_URL,
     ssl: {
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
     }
 })
 
