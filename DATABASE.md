@@ -1,5 +1,17 @@
 # Render PostgreSQL Setup
 
+
+## Prerequisites
+
+A PostgreSQL instance must be running on Render. Once set up:
+
+1. Extract `Database Files` and move `equipmentdb_postgres.sql` to `/migration`
+2. Run `python migration.py` — you may need to install missing libraries, if any.
+
+Seed data should now be present on the remote database.
+
+> **Note:** Free tier instances suspend after 1 month of inactivity
+
 ## 1. Database Connection
 
 Use the **Internal Database URL** from your Render Postgres dashboard (only works if your server is on Render in the same region).
