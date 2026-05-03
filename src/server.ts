@@ -510,7 +510,7 @@ app.post('/api/v1/equipment/extract', async (req: Request, res: Response) => {
  * automatically logged to the `changeLogs` table.
  */
 cron.schedule("*/5 * * * *", async () => {
-    logger.info("Checking Equipment for due Calibrations...")
+    logger.info("Checking Equipment for due Calibrations...", process.env.DB_URL)
     try {
         const result = await db.query("SELECT id, nextCalibration, status FROM equipment")
         const allEquipment: any[] = result.rows
@@ -545,6 +545,5 @@ cron.schedule("*/5 * * * *", async () => {
 })
 
 app.listen(port, () => {
-    logger.info("DB_URL:", process.env.DB_URL);
     logger.info(`Equipment Management System Server is running on port ${port}...`)
 })
