@@ -42,6 +42,14 @@ flowchart LR
 - Certificate storage and download
 - CSV data export
 
+## Database Setup
+
+- [Database Setup docs](DATABASE.md)
+
+## Sanity Testing
+
+- [Sanity Tests](SANITY.md)
+
 
 ## Authors
 
