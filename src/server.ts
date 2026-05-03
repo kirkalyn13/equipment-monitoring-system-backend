@@ -31,6 +31,7 @@ app.use(express.json({limit: '64mb'}))
  * Configuration is sourced from environment variables:
  * `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_NAME`, `DB_PORT`.
  */
+console.log("DB_URL:", process.env.DB_URL);
 const db = new Pool({
     // user: process.env.DB_USER,
     // password: process.env.DB_PASSWORD,
