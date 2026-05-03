@@ -42,6 +42,14 @@ const db = new Pool({
 })
 
 /**
+ * @route GET /health
+ * @returns {{ status: string, uptime: number }} Server health info
+ */
+app.get('/health', (req: Request, res: Response) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+/**
  * Retrieves all equipment records from the database.
  *
  * @route GET /api/v1/equipment
