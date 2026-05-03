@@ -545,5 +545,6 @@ cron.schedule("*/5 * * * *", async () => {
 })
 
 app.listen(port, () => {
-    logger.info(`TEST: Equipment Management System Server is running on port ${port} with DB URL: ${process.env.DB_URL}`)
+    logger.info(`Equipment Management System Server is running on port ${port}...`)
+    logger.info(`Database URL: ${process.env.DB_URL}`)
 })
