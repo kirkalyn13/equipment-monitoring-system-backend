@@ -32,11 +32,11 @@ app.use(express.json({limit: '64mb'}))
  * `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_NAME`, `DB_PORT`.
  */
 const db = new Pool({
-    // user: process.env.DB_USER,
-    // password: process.env.DB_PASSWORD,
-    // host: process.env.DB_HOST,
-    // database: process.env.DB_NAME,
-    // port: Number(process.env.DB_PORT),
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    port: Number(process.env.DB_PORT),
     connectionString: process.env.DB_URL,
     ssl: { rejectUnauthorized: false }
 })
