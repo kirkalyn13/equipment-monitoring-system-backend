@@ -48,3 +48,9 @@
 | Test | Description |
 |------|-------------|
 | Pending Item | Set calibration date to yesterday, wait ~5 mins, reload dashboard — item should appear in pending table |
+
+### Routes
+| Test | Description |
+|------|-------------|
+| Not Found | Navigate to a non-existent path; Should show NotFound component |
+| Unauthorized | Navigate to `/users` using basic role; Should redirect to `/unauthorized` and show Unauthorized component |
