@@ -1,20 +1,26 @@
-# Render PostgreSQL Setup
+# PostgreSQL Setup (Neon or Render)
 
+The database can be hosted on either **Neon** or **Render Postgres**. The steps below note where the two differ.
 
 ## Prerequisites
 
-A PostgreSQL instance must be running on Render. Once set up:
+A PostgreSQL instance must be running on Neon or Render. Once set up:
 
 1. Extract `Database Files` and move `equipmentdb_postgres.sql` to `/migration`
 2. Run `python migration.py` — you may need to install missing libraries, if any.
 
 Seed data should now be present on the remote database.
 
-> **Note:** Free tier instances suspend after 1 month of inactivity
+> **Note (Render):** Free tier instances suspend after 1 month of inactivity
+
+> **Note (Neon):** Free tier compute auto-suspends when idle and wakes on the next connection, so expect a brief cold start
 
 ## 1. Database Connection
 
-Use the **Internal Database URL** from your Render Postgres dashboard (only works if your server is on Render in the same region).
+| Provider | Connection string |
+|----------|-------------------|
+| Render | **Internal Database URL** from the Render Postgres dashboard (only works if your server is on Render in the same region) |
+| Neon | Connection string from the Neon dashboard (**Connect** button), ending in `?sslmode=require` |
 
 ## 2. Pool Configuration
 
@@ -30,7 +36,8 @@ const db = new Pool({
 })
 ```
 
-> `rejectUnauthorized: false` is required — Render uses a self-signed certificate.
+> **Render:** `rejectUnauthorized: false` is required — Render uses a self-signed certificate.
+> **Neon:** Uses a valid certificate, so `ssl: true` also works.
 
 ## 3. Environment Variables
 
@@ -38,9 +45,11 @@ Set these in your Render web service under **Environment**:
 
 | Variable | Value |
 |----------|-------|
-| `DB_URL` | Internal URL from Render Postgres dashboard e.g. `postgresql://username:xxxyyyyzzzz@dpg-abcd1234efg-a/sampledb_9xxab??sslmode=no-verify` |
+| `DB_URL` | Render: `postgresql://username:xxxyyyyzzzz@dpg-abcd1234efg-a/sampledb_9xxab?sslmode=no-verify` |
+| `DB_URL` | Neon: `postgresql://username:xxxyyyyzzzz@ep-example-123456.region.aws.neon.tech/sampledb?sslmode=require` |
 
-> `?sslmode=no-verify` is needed to bypass SSL issues. 
+> Render: `?sslmode=no-verify` is needed to bypass SSL issues.
+> Neon: `?sslmode=require` is needed.
 
 Any other secrets (e.g. Firebase, JWT) must also be added here — they are **not** read from `.env` files in production.
 

@@ -1,0 +1,15 @@
+File upload troubleshooting
+Error: #1153 - Got a packet bigger than 'max_allowed_packet' bytes
+
+1. Change the my.cnf or my.ini file
+max_allowed_packet=100M
+
+2. Run on MySQL Console
+set global net_buffer_length=1000000; 
+set global max_allowed_packet=1000000000;
+
+If 413 Request Entity Too Large encountered:
+-edit the ff in php.ini:
+upload_max_size=64M
+post_max_size=64M
+max_execution_time=300
